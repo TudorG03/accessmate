@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { MMKV } from "react-native-mmkv";
+import { router } from "expo-router";
+import { Alert } from "react-native";
 import { MarkerService } from "./marker.service";
 import {
     Marker,
@@ -9,6 +11,7 @@ import {
     MarkerUpdate,
 } from "@/types/marker.types";
 import { getUserId } from "../auth/auth.utils";
+import { useAuthStore } from "../auth/auth.store";
 
 // Storage setup for persisting markers
 const storage = new MMKV({
@@ -27,6 +30,33 @@ const mmkvStorage = {
     removeItem: (name: string) => {
         storage.delete(name);
     },
+};
+
+// Handle authentication errors
+const handleAuthError = (error: unknown) => {
+    // Check if it's an authentication error
+    if (
+        (error instanceof Error &&
+            error.message.includes("Authentication failed")) ||
+        (error instanceof Error && error.message.includes("401"))
+    ) {
+        // Clear auth state
+        useAuthStore.getState().logout();
+
+        // Show error and redirect
+        Alert.alert(
+            "Session Expired",
+            "Your session has expired. Please log in again.",
+            [
+                {
+                    text: "OK",
+                    onPress: () => router.replace("/"),
+                },
+            ],
+        );
+        return true;
+    }
+    return false;
 };
 
 // Define the marker store state
@@ -72,6 +102,11 @@ export const useMarkerStore = create<MarkerState>()(
                     const markers = await MarkerService.getMarkers();
                     set({ markers, isLoading: false });
                 } catch (error) {
+                    if (handleAuthError(error)) {
+                        set({ isLoading: false });
+                        return;
+                    }
+
                     set({
                         isLoading: false,
                         error: error instanceof Error
@@ -100,6 +135,11 @@ export const useMarkerStore = create<MarkerState>()(
 
                     set({ userMarkers, isLoading: false });
                 } catch (error) {
+                    if (handleAuthError(error)) {
+                        set({ isLoading: false });
+                        return;
+                    }
+
                     set({
                         isLoading: false,
                         error: error instanceof Error
@@ -121,6 +161,11 @@ export const useMarkerStore = create<MarkerState>()(
                     );
                     set({ nearbyMarkers, isLoading: false });
                 } catch (error) {
+                    if (handleAuthError(error)) {
+                        set({ isLoading: false });
+                        return;
+                    }
+
                     set({
                         isLoading: false,
                         error: error instanceof Error
@@ -143,6 +188,11 @@ export const useMarkerStore = create<MarkerState>()(
                     }));
                     return newMarker;
                 } catch (error) {
+                    if (handleAuthError(error)) {
+                        set({ isLoading: false });
+                        return null;
+                    }
+
                     set({
                         isLoading: false,
                         error: error instanceof Error
@@ -180,6 +230,11 @@ export const useMarkerStore = create<MarkerState>()(
 
                     return updatedMarker;
                 } catch (error) {
+                    if (handleAuthError(error)) {
+                        set({ isLoading: false });
+                        return null;
+                    }
+
                     set({
                         isLoading: false,
                         error: error instanceof Error
@@ -209,6 +264,11 @@ export const useMarkerStore = create<MarkerState>()(
 
                     return true;
                 } catch (error) {
+                    if (handleAuthError(error)) {
+                        set({ isLoading: false });
+                        return false;
+                    }
+
                     set({
                         isLoading: false,
                         error: error instanceof Error

@@ -2,6 +2,7 @@ import { Router } from "https://deno.land/x/oak@v17.1.4/mod.ts";
 import {
   deleteUser,
   getAllUsers,
+  getUserById,
   login,
   logout,
   refreshToken,
@@ -27,6 +28,13 @@ routerAuth.get(
   authMiddleware,
   requireRole([UserRole.ADMIN, UserRole.MODERATOR]),
   getAllUsers,
+);
+
+// Get user by ID - protected route that returns different data based on user role
+routerAuth.get(
+  "/user/:id",
+  authMiddleware,
+  getUserById,
 );
 
 // User management routes with role-based access

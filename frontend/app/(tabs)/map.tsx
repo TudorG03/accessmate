@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { View, Text, ActivityIndicator, TouchableOpacity, Dimensions, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import MapView, { Marker as MapMarker, PROVIDER_GOOGLE, Region } from "react-native-maps";
+import MapView, { Marker as MapMarker, PROVIDER_GOOGLE, Region, Callout } from "react-native-maps";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import AddMarkerModal from "@/components/markers/AddMarkerModal";
+import MarkerDetailsModal from "@/components/markers/MarkerDetailsModal";
 import { useMarker } from "@/stores/marker/hooks/useMarker";
 import { Marker } from "@/types/marker.types";
 import { getObstacleColor, getObstacleEmoji } from "@/stores/marker/marker.utils";
+import { useTheme } from "@/stores/theme/useTheme";
+import { useRouter } from "expo-router";
 
 type LocationObjectType = Location.LocationObject;
 
@@ -18,10 +21,25 @@ export default function MapScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [currentRegion, setCurrentRegion] = useState<Region | null>(null);
   const [isFetchingMarkers, setIsFetchingMarkers] = useState(false);
+  const [selectedMarker, setSelectedMarker] = useState<Marker | null>(null);
+  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const mapRef = useRef<MapView | null>(null);
+  const { isDark, colors } = useTheme();
+  const router = useRouter();
 
   // Use our marker hook to access marker data
   const { markers, findNearbyMarkers } = useMarker();
+
+  // Function to handle marker selection
+  const handleMarkerPress = (marker: Marker) => {
+    setSelectedMarker(marker);
+    setDetailsModalVisible(true);
+  };
+
+  // Navigate to My Markers screen
+  const navigateToMyMarkers = () => {
+    router.push('/(tabs)/my-markers');
+  };
 
   useEffect(() => {
     (async () => {
@@ -209,6 +227,7 @@ export default function MapScreen() {
                 pinColor={getObstacleColor(marker.obstacleScore)}
                 title={getMarkerTitle(marker)}
                 description={getMarkerDescription(marker)}
+                onPress={() => handleMarkerPress(marker)}
               />
             ))}
           </MapView>
@@ -240,6 +259,13 @@ export default function MapScreen() {
           <AddMarkerModal
             visible={modalVisible}
             onClose={handleModalClose}
+          />
+
+          {/* Marker details modal */}
+          <MarkerDetailsModal
+            visible={detailsModalVisible}
+            onClose={() => setDetailsModalVisible(false)}
+            marker={selectedMarker}
           />
         </View>
       )}

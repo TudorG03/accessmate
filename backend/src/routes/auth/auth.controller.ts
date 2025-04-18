@@ -498,3 +498,63 @@ export const deleteUser = async (ctx: RouterContext<"/delete/:id">) => {
     handleError(ctx, error, "Delete user error:");
   }
 };
+
+/**
+ * Get user data by ID
+ * This endpoint provides limited public information about a user
+ */
+export const getUserById = async (ctx: RouterContext<"/user/:id">) => {
+  try {
+    const userId = ctx.params.id;
+    const authUser = ctx.state.user;
+
+    // Find user without sensitive information
+    const user = await User.findById(userId).select(
+      "-password -refreshToken -refreshTokenExpiry",
+    );
+
+    if (!user) {
+      ctx.response.status = 404;
+      ctx.response.body = { message: "User not found" };
+      return;
+    }
+
+    // Return full profile for admins/moderators or the user themselves
+    // Return limited public profile for other users
+    if (
+      authUser.role === UserRole.ADMIN ||
+      authUser.role === UserRole.MODERATOR ||
+      authUser.userId === userId
+    ) {
+      // Return full profile (excluding sensitive data)
+      ctx.response.status = 200;
+      ctx.response.body = {
+        message: "User retrieved successfully",
+        user: {
+          id: user._id,
+          email: user.email,
+          displayName: user.displayName,
+          role: user.role,
+          preferences: user.preferences,
+          isActive: user.isActive,
+          lastLogin: user.lastLogin,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+        },
+      };
+    } else {
+      // Return limited public profile
+      ctx.response.status = 200;
+      ctx.response.body = {
+        message: "User retrieved successfully",
+        user: {
+          id: user._id,
+          displayName: user.displayName,
+          role: user.role,
+        },
+      };
+    }
+  } catch (error) {
+    handleError(ctx, error, "Get user by ID error:");
+  }
+};

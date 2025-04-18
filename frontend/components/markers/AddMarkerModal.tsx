@@ -1,31 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
     Modal,
-    StyleSheet,
     TextInput,
     TouchableOpacity,
     ScrollView,
     ActivityIndicator,
     Platform,
     Alert,
-    KeyboardAvoidingView
+    KeyboardAvoidingView,
+    Image
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useMarker } from '@/stores/marker/hooks/useMarker';
-import { ObstacleType } from '@/types/marker.types';
+import { Marker, ObstacleType } from '@/types/marker.types';
 import { getObstacleEmoji } from '@/stores/marker/marker.utils';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '@/stores/theme/useTheme';
 
 interface AddMarkerModalProps {
     visible: boolean;
     onClose: () => void;
+    editingMarker?: Marker | null;
 }
 
-const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose }) => {
-    const { createMarkerAtCurrentLocation, isLoading, error } = useMarker();
+const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose, editingMarker }) => {
+    const { createMarkerAtCurrentLocation, updateMarker, isLoading, error } = useMarker();
+    const { colors, isDark } = useTheme();
+    const isEditing = !!editingMarker;
 
     // Form state
     const [obstacleType, setObstacleType] = useState<ObstacleType>(ObstacleType.STAIRS);
@@ -33,6 +37,19 @@ const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose }) => 
     const [description, setDescription] = useState<string>('');
     const [images, setImages] = useState<string[]>([]);
     const [localError, setLocalError] = useState<string | null>(null);
+
+    // Set form values when editing an existing marker
+    useEffect(() => {
+        if (editingMarker && visible) {
+            setObstacleType(editingMarker.obstacleType as ObstacleType);
+            setObstacleScore(editingMarker.obstacleScore);
+            setDescription(editingMarker.description || '');
+            setImages(editingMarker.images || []);
+        } else if (!editingMarker && visible) {
+            // Reset form when opening for a new marker
+            resetForm();
+        }
+    }, [editingMarker, visible]);
 
     // Helper to get obstacle type options
     const obstacleOptions = Object.values(ObstacleType).map(type => ({
@@ -55,24 +72,40 @@ const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose }) => 
         try {
             setLocalError(null);
 
-            if (!description.trim()) {
-                setLocalError('Please provide a description of the obstacle');
-                return;
-            }
+            let result: Marker | null = null;
 
-            const marker = await createMarkerAtCurrentLocation({
-                obstacleType,
-                obstacleScore,
-                description,
-                images
-            });
+            if (isEditing && editingMarker) {
+                // Update existing marker
+                result = await updateMarker(editingMarker.id, {
+                    obstacleType,
+                    obstacleScore,
+                    description,
+                    images
+                });
 
-            if (marker) {
-                resetForm();
-                onClose();
-                Alert.alert('Success', 'Obstacle marker added successfully!');
+                if (result) {
+                    resetForm();
+                    onClose();
+                    Alert.alert('Success', 'Obstacle marker updated successfully!');
+                } else {
+                    setLocalError('Failed to update marker. Please try again.');
+                }
             } else {
-                setLocalError('Failed to add marker. Please try again.');
+                // Create new marker
+                result = await createMarkerAtCurrentLocation({
+                    obstacleType,
+                    obstacleScore,
+                    description,
+                    images
+                });
+
+                if (result) {
+                    resetForm();
+                    onClose();
+                    Alert.alert('Success', 'Obstacle marker added successfully!');
+                } else {
+                    setLocalError('Failed to add marker. Please try again.');
+                }
             }
         } catch (err) {
             setLocalError(err instanceof Error ? err.message : 'An unexpected error occurred');
@@ -115,6 +148,13 @@ const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose }) => 
         setImages(images.filter((_, i) => i !== index));
     };
 
+    // Helper to get color based on score
+    const getScoreColor = (score: number): string => {
+        if (score <= 2) return 'bg-green-500'; // Low severity - green
+        if (score <= 4) return 'bg-orange-500'; // Medium severity - orange
+        return 'bg-red-500'; // High severity - red
+    };
+
     return (
         <Modal
             visible={visible}
@@ -124,106 +164,121 @@ const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose }) => 
         >
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={styles.centeredView}
+                className="flex-1 justify-end bg-black bg-opacity-50"
             >
-                <View style={styles.modalView}>
-                    <View style={styles.header}>
-                        <Text style={styles.headerTitle}>Add Accessibility Obstacle</Text>
-                        <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                            <Ionicons name="close" size={24} color="#000" />
+                <View className={`p-5 max-h-[90%] rounded-t-[20px] ${isDark ? 'bg-dark-card' : 'bg-white'}`}>
+                    <View className={`flex-row justify-between items-center mb-5 pb-[10px] border-b ${isDark ? 'border-dark-border' : 'border-gray-200'}`}>
+                        <Text className={`text-lg font-bold ${isDark ? 'text-white' : 'text-black'}`}>
+                            {isEditing ? 'Edit Obstacle' : 'Add Accessibility Obstacle'}
+                        </Text>
+                        <TouchableOpacity className="p-[5px]" onPress={onClose}>
+                            <Ionicons name="close" size={24} color={isDark ? colors.text : "#000"} />
                         </TouchableOpacity>
                     </View>
 
-                    <ScrollView style={styles.formContainer}>
+                    <ScrollView className="max-h-[80%]">
                         {/* Obstacle Type Selector */}
-                        <Text style={styles.label}>Obstacle Type</Text>
-                        <View style={styles.pickerContainer}>
+                        <Text className={`text-base font-medium mt-[10px] mb-[5px] ${isDark ? 'text-white' : 'text-black'}`}>Obstacle Type</Text>
+                        <View className={`border rounded-lg mb-[15px] ${isDark ? 'border-dark-border bg-dark-input' : 'border-gray-300 bg-white'}`}>
                             <Picker
                                 selectedValue={obstacleType}
                                 onValueChange={(value) => setObstacleType(value as ObstacleType)}
-                                style={styles.picker}
+                                className="h-[50px]"
+                                dropdownIconColor={isDark ? '#ffffff' : undefined}
+                                style={{
+                                    color: isDark ? '#ffffff' : '#000000',
+                                    backgroundColor: isDark ? colors.input : undefined
+                                }}
+                                itemStyle={{
+                                    color: isDark ? '#ffffff' : '#000000',
+                                    backgroundColor: isDark ? colors.card : undefined
+                                }}
                             >
                                 {obstacleOptions.map((option) => (
                                     <Picker.Item
                                         key={option.value}
                                         label={`${option.emoji} ${option.label}`}
                                         value={option.value}
+                                        color={'#000000'}
                                     />
                                 ))}
                             </Picker>
                         </View>
 
                         {/* Severity Selector */}
-                        <Text style={styles.label}>Severity (1-5)</Text>
-                        <View style={styles.severityContainer}>
+                        <Text className={`text-base font-medium mt-[10px] mb-[5px] ${isDark ? 'text-white' : 'text-black'}`}>Severity (1-5)</Text>
+                        <View className="flex-row justify-between mb-[15px]">
                             {[1, 2, 3, 4, 5].map((score) => (
                                 <TouchableOpacity
-                                    key={score}
-                                    style={[
-                                        styles.severityButton,
-                                        obstacleScore === score && styles.selectedSeverity,
-                                        { backgroundColor: getScoreColor(score) }
-                                    ]}
+                                    key={`severity-${score}`}
+                                    className={`w-[40px] h-[40px] rounded-full justify-center items-center ${getScoreColor(score)} ${obstacleScore === score ? 'border-2 border-white' : ''}`}
                                     onPress={() => setObstacleScore(score)}
                                 >
-                                    <Text style={styles.severityText}>{score}</Text>
+                                    <Text className="text-white font-bold">{score}</Text>
                                 </TouchableOpacity>
                             ))}
                         </View>
 
                         {/* Description */}
-                        <Text style={styles.label}>Description</Text>
+                        <Text className={`text-base font-medium mt-[10px] mb-[5px] ${isDark ? 'text-white' : 'text-black'}`}>Description (Optional)</Text>
                         <TextInput
-                            style={styles.input}
+                            className={`border rounded-lg p-[10px] mb-[15px] min-h-[100px] text-top ${isDark ? 'border-dark-border bg-dark-input text-white' : 'border-gray-300 bg-white text-black'}`}
                             value={description}
                             onChangeText={setDescription}
                             placeholder="Describe the obstacle in detail..."
+                            placeholderTextColor={isDark ? colors.secondaryText : '#888'}
                             multiline
                             numberOfLines={4}
                         />
 
                         {/* Image Selection */}
-                        <Text style={styles.label}>Images (Optional)</Text>
-                        <View style={styles.imageContainer}>
+                        <Text className={`text-base font-medium mt-[10px] mb-[5px] ${isDark ? 'text-white' : 'text-black'}`}>Images (Optional)</Text>
+                        <View className="flex-row flex-wrap mb-[15px]">
                             {images.map((uri, index) => (
-                                <View key={index} style={styles.imagePreview}>
+                                <View key={`image-${index}-${uri.substring(uri.lastIndexOf('/') + 1, uri.length)}`} className="w-[100px] h-[100px] m-[5px] relative">
                                     <TouchableOpacity
-                                        style={styles.removeImage}
+                                        className="absolute top-[-5px] right-[-5px] z-10 bg-white rounded-full"
                                         onPress={() => removeImage(index)}
                                     >
                                         <Ionicons name="close-circle" size={20} color="red" />
                                     </TouchableOpacity>
-                                    <View style={styles.imageWrapper}>
-                                        {/* You would use an Image component here in a real app */}
-                                        <View style={styles.imagePlaceholder}>
-                                            <Text style={styles.imageText}>Image {index + 1}</Text>
-                                        </View>
+                                    <View className={`w-full h-full border rounded-lg overflow-hidden ${isDark ? 'border-dark-border' : 'border-gray-300'}`}>
+                                        <Image
+                                            source={{ uri }}
+                                            className="w-full h-full"
+                                            resizeMode="cover"
+                                        />
                                     </View>
                                 </View>
                             ))}
 
-                            <TouchableOpacity style={styles.addImageButton} onPress={pickImage}>
-                                <Ionicons name="camera" size={24} color="#555" />
-                                <Text style={styles.addImageText}>Add Image</Text>
+                            <TouchableOpacity
+                                className={`w-[100px] h-[100px] border border-dashed m-[5px] justify-center items-center rounded-lg ${isDark ? 'border-gray-500' : 'border-gray-300'}`}
+                                onPress={pickImage}
+                            >
+                                <Ionicons name="camera" size={24} color={isDark ? colors.secondaryText : "#555"} />
+                                <Text className={`mt-[5px] ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Add Image</Text>
                             </TouchableOpacity>
                         </View>
 
                         {/* Error Display */}
                         {(localError || error) && (
-                            <Text style={styles.errorText}>{localError || error}</Text>
+                            <Text className="text-red-500 mb-[15px]">{localError || error}</Text>
                         )}
                     </ScrollView>
 
                     {/* Submit Button */}
                     <TouchableOpacity
-                        style={styles.submitButton}
+                        className="bg-[#F1B24A] rounded-lg p-[15px] items-center mt-[10px]"
                         onPress={handleSubmit}
                         disabled={isLoading}
                     >
                         {isLoading ? (
                             <ActivityIndicator size="small" color="#fff" />
                         ) : (
-                            <Text style={styles.submitText}>Add Obstacle Marker</Text>
+                            <Text className="text-white font-bold text-base">
+                                {isEditing ? 'Save Changes' : 'Add Obstacle Marker'}
+                            </Text>
                         )}
                     </TouchableOpacity>
                 </View>
@@ -231,159 +286,5 @@ const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose }) => 
         </Modal>
     );
 };
-
-// Helper to get color based on score
-const getScoreColor = (score: number): string => {
-    if (score <= 2) return '#4caf50'; // Low severity - green
-    if (score <= 4) return '#ff9800'; // Medium severity - orange
-    return '#f44336'; // High severity - red
-};
-
-const styles = StyleSheet.create({
-    centeredView: {
-        flex: 1,
-        justifyContent: 'flex-end',
-        backgroundColor: 'rgba(0, 0, 0, 0.5)'
-    },
-    modalView: {
-        backgroundColor: 'white',
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
-        padding: 20,
-        maxHeight: '90%',
-    },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 20,
-        paddingBottom: 10,
-        borderBottomWidth: 1,
-        borderBottomColor: '#eee',
-    },
-    headerTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-    },
-    closeButton: {
-        padding: 5,
-    },
-    formContainer: {
-        maxHeight: '80%',
-    },
-    label: {
-        fontSize: 16,
-        marginBottom: 5,
-        fontWeight: '500',
-        marginTop: 10,
-    },
-    pickerContainer: {
-        borderWidth: 1,
-        borderColor: '#ddd',
-        borderRadius: 8,
-        marginBottom: 15,
-    },
-    picker: {
-        height: 50,
-    },
-    severityContainer: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 15,
-    },
-    severityButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#ddd',
-    },
-    selectedSeverity: {
-        borderWidth: 2,
-        borderColor: '#000',
-    },
-    severityText: {
-        color: 'white',
-        fontWeight: 'bold',
-    },
-    input: {
-        borderWidth: 1,
-        borderColor: '#ddd',
-        borderRadius: 8,
-        padding: 10,
-        marginBottom: 15,
-        minHeight: 100,
-        textAlignVertical: 'top',
-    },
-    imageContainer: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        marginBottom: 15,
-    },
-    imagePreview: {
-        width: 100,
-        height: 100,
-        margin: 5,
-        position: 'relative',
-    },
-    removeImage: {
-        position: 'absolute',
-        top: -5,
-        right: -5,
-        zIndex: 1,
-        backgroundColor: 'white',
-        borderRadius: 10,
-    },
-    imageWrapper: {
-        width: '100%',
-        height: '100%',
-        borderWidth: 1,
-        borderColor: '#ddd',
-        borderRadius: 8,
-        overflow: 'hidden',
-    },
-    imagePlaceholder: {
-        width: '100%',
-        height: '100%',
-        backgroundColor: '#f0f0f0',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    imageText: {
-        color: '#555',
-    },
-    addImageButton: {
-        width: 100,
-        height: 100,
-        borderWidth: 1,
-        borderColor: '#ddd',
-        borderRadius: 8,
-        borderStyle: 'dashed',
-        margin: 5,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    addImageText: {
-        marginTop: 5,
-        color: '#555',
-    },
-    errorText: {
-        color: 'red',
-        marginBottom: 15,
-    },
-    submitButton: {
-        backgroundColor: '#F1B24A',
-        borderRadius: 8,
-        padding: 15,
-        alignItems: 'center',
-        marginTop: 10,
-    },
-    submitText: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 16,
-    },
-});
 
 export default AddMarkerModal; 
