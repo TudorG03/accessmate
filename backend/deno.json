@@ -1,0 +1,49 @@
+{
+  "tasks": {
+    "start": "deno run --allow-net --allow-env --allow-read src/server.ts",
+    "dev": "deno run --allow-env --allow-read --allow-write --allow-net --watch src/server.ts",
+    "test": "deno test --allow-env --allow-read --allow-write --allow-net",
+    "test:watch": "deno test --allow-env --allow-read --allow-write --allow-net --watch",
+    "test:debug": "deno test --debug --allow-net --allow-env --allow-read src/__tests__/auth.test.ts",
+    "test:coverage": "deno test --coverage=coverage --allow-net --allow-env --allow-read src/__tests__/auth.test.ts",
+    "test:clean": "deno test --allow-net --allow-env --allow-read --allow-write src/__tests__/auth.test.ts",
+    "test:single": "deno test --allow-net --allow-env --allow-read src/__tests__/auth.test.ts -t"
+  },
+  "imports": {
+    "mongodb": "npm:mongodb@^6.15.0",
+    "mongosh": "npm:mongosh@^2.5.0",
+    "oak": "https://deno.land/x/oak@v17.1.4/mod.ts",
+    "mongoose": "npm:mongoose@^6.7",
+    "bcrypt": "https://deno.land/x/bcrypt@v0.4.1/mod.ts",
+    "dotenv": "https://deno.land/x/dotenv@v3.2.0/mod.ts"
+  },
+  "lint": {
+    "include": [
+      "src/"
+    ],
+    "exclude": [
+      "src/testdata/",
+      "data/fixtures/**/*.ts"
+    ],
+    "rules": {
+      "tags": [
+        "recommended"
+      ],
+      "include": [
+        "ban-untagged-todo"
+      ],
+      "exclude": [
+        "no-unused-vars"
+      ]
+    }
+  },
+  "compilerOptions": {
+    "lib": [
+      "deno.ns",
+      "dom"
+    ],
+    "types": [
+      "node"
+    ]
+  }
+}
