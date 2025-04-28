@@ -32,6 +32,11 @@ export enum ActivityType {
   OTHER = "other",
 }
 
+export enum DistanceUnit {
+  KILOMETERS = "kilometers",
+  MILES = "miles",
+}
+
 interface IUserPreferences {
   activityTypes: string[];
   transportMethod: TransportMethod;
@@ -41,6 +46,7 @@ interface IUserPreferences {
     longitude: number;
   };
   searchRadius: number;
+  preferedUnit: DistanceUnit;
   accessibilityRequirements?: {
     wheelchairAccessible: boolean;
     hasElevator: boolean;
@@ -134,6 +140,11 @@ const userSchema: Schema = new Schema({
       default: 5,
       min: 1,
       max: 50,
+    },
+    preferedUnit: {
+      type: String,
+      enum: Object.values(DistanceUnit),
+      default: DistanceUnit.KILOMETERS,
     },
     accessibilityRequirements: {
       wheelchairAccessible: { type: Boolean, default: false },

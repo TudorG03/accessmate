@@ -2,6 +2,7 @@ import { Context, RouterContext } from "https://deno.land/x/oak@v17.1.4/mod.ts";
 import User, {
   ActivityType,
   Budget,
+  DistanceUnit,
   IUser,
   TransportMethod,
   UserRole,
@@ -72,6 +73,7 @@ interface UserPreferences {
   budget: Budget;
   baseLocation: BaseLocation;
   searchRadius: number;
+  preferedUnit: DistanceUnit;
   accessibilityRequirements?: AccessibilityRequirements;
 }
 
@@ -231,6 +233,7 @@ export const register = async (ctx: Context) => {
           longitude: body.preferences?.baseLocation?.longitude || 0,
         },
         searchRadius: body.preferences?.searchRadius || 5,
+        preferedUnit: body.preferences?.preferedUnit || DistanceUnit.KILOMETERS,
         accessibilityRequirements:
           body.preferences?.accessibilityRequirements || {
             wheelchairAccessible: false,
@@ -444,6 +447,9 @@ export const updateUser = async (ctx: RouterContext<"/update/:id">) => {
       }
       if (body.preferences.searchRadius) {
         user.preferences.searchRadius = body.preferences.searchRadius;
+      }
+      if (body.preferences.preferedUnit) {
+        user.preferences.preferedUnit = body.preferences.preferedUnit;
       }
       if (body.preferences.accessibilityRequirements) {
         user.preferences.accessibilityRequirements = {

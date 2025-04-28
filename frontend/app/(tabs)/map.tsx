@@ -1,16 +1,23 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { View, Text, ActivityIndicator, TouchableOpacity, Dimensions, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import MapView, { Marker as MapMarker, PROVIDER_GOOGLE, Region, Callout } from "react-native-maps";
+import MapView, { Marker as MapMarker, PROVIDER_GOOGLE, Region, Callout, Polyline } from "react-native-maps";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import AddMarkerModal from "@/components/markers/AddMarkerModal";
 import MarkerDetailsModal from "@/components/markers/MarkerDetailsModal";
+import RouteConfirmationModal from "@/components/map/RouteConfirmationModal";
+import PlaceSearchBar from "@/components/map/PlaceSearchBar";
 import { useMarker } from "@/stores/marker/hooks/useMarker";
 import { Marker } from "@/types/marker.types";
 import { getObstacleColor, getObstacleEmoji } from "@/stores/marker/marker.utils";
 import { useTheme } from "@/stores/theme/useTheme";
 import { useRouter } from "expo-router";
+import { getDirections } from "@/services/places.service";
+import DirectionsPanel from '@/components/map/DirectionsPanel';
+import { getAccessibleRoute } from '@/services/navigation.service';
+import useAuth from "../../stores/auth/hooks/useAuth";
+import { formatDistance } from "@/utils/distanceUtils";
 
 type LocationObjectType = Location.LocationObject;
 
@@ -23,6 +30,18 @@ export default function MapScreen() {
   const [isFetchingMarkers, setIsFetchingMarkers] = useState(false);
   const [selectedMarker, setSelectedMarker] = useState<Marker | null>(null);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+
+  // New state for place search and navigation
+  const [selectedPlace, setSelectedPlace] = useState<any>(null);
+  const [routeConfirmationModalVisible, setRouteConfirmationModalVisible] = useState(false);
+  const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number, longitude: number }>>([]);
+  const [routeInfo, setRouteInfo] = useState<{ distance: number, duration: string } | null>(null);
+  const [navigationMode, setNavigationMode] = useState<'walking' | 'driving'>('walking');
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [routeSteps, setRouteSteps] = useState<Array<any>>([]);
+  const [showDirections, setShowDirections] = useState(false);
+  const [useAccessibleRoute, setUseAccessibleRoute] = useState(true);
+
   const mapRef = useRef<MapView | null>(null);
   const { isDark, colors } = useTheme();
   const router = useRouter();
@@ -30,15 +49,128 @@ export default function MapScreen() {
   // Use our marker hook to access marker data
   const { markers, findNearbyMarkers } = useMarker();
 
+  // Add this line with the other state hooks
+  const { user } = useAuth();
+
   // Function to handle marker selection
   const handleMarkerPress = (marker: Marker) => {
     setSelectedMarker(marker);
     setDetailsModalVisible(true);
   };
 
-  // Navigate to My Markers screen
-  const navigateToMyMarkers = () => {
-    router.push('/(tabs)/my-markers');
+  // Handle place selection from search
+  const handlePlaceSelected = (place: { id: string, name: string, address: string }) => {
+    // Only store the ID when opening the modal - full details will be fetched by the modal
+    setSelectedPlace({ id: place.id });
+    setRouteConfirmationModalVisible(true);
+  };
+
+  // Handle location selection from search
+  const handleLocationSelected = (location: { latitude: number, longitude: number }) => {
+    // Animate map to the selected location
+    if (mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: location.latitude,
+        longitude: location.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 1000);
+    }
+  };
+
+  // Handle route confirmation
+  const handleRouteConfirmation = async (
+    transportMode: 'walking' | 'driving',
+    destination: {
+      placeId: string,
+      name: string,
+      address: string,
+      location: { latitude: number, longitude: number }
+    },
+    useAccessibleRouting: boolean = true
+  ) => {
+    if (!location) {
+      return;
+    }
+
+    try {
+      // Update selectedPlace with the complete destination data including location
+      setSelectedPlace(destination);
+      setNavigationMode(transportMode);
+      setIsNavigating(true);
+      setRouteConfirmationModalVisible(false);
+      // Update accessible route preference
+      setUseAccessibleRoute(useAccessibleRouting);
+
+      // Get directions from current location to destination
+      const originLocation = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude
+      };
+
+      let directionsResult;
+
+      // If walking and accessibility routing is enabled, use our custom routing
+      if (transportMode === 'walking' && useAccessibleRouting) {
+        // Get relevant obstacles from the store - only consider obstacles with moderate or higher severity
+        const relevantObstacles = markers.filter(marker => marker.obstacleScore >= 2);
+
+        directionsResult = await getAccessibleRoute(
+          originLocation,
+          destination.location,
+          relevantObstacles,
+          transportMode
+        );
+      } else {
+        // Otherwise use standard Google directions
+        directionsResult = await getDirections(originLocation, destination.location);
+      }
+
+      setRouteCoordinates(directionsResult.points);
+      setRouteInfo({
+        distance: directionsResult.distance,
+        duration: directionsResult.duration
+      });
+      setRouteSteps(directionsResult.steps);
+      setShowDirections(true);
+
+      // Fit map to show the entire route
+      if (mapRef.current && directionsResult.points.length > 0) {
+        mapRef.current.fitToCoordinates(directionsResult.points, {
+          edgePadding: { top: 80, right: 50, bottom: 80, left: 50 },
+          animated: true
+        });
+      }
+    } catch (error) {
+      console.error('Error getting directions:', error);
+      // Show an error toast or alert here
+    }
+  };
+
+  // Cancel navigation
+  const cancelNavigation = () => {
+    setIsNavigating(false);
+    setRouteCoordinates([]);
+    setRouteInfo(null);
+    setSelectedPlace(null);
+    setRouteSteps([]);
+    setShowDirections(false);
+  };
+
+  // Toggle directions panel
+  const toggleDirectionsPanel = () => {
+    setShowDirections(!showDirections);
+  };
+
+  // Toggle accessible routing
+  const toggleAccessibleRouting = () => {
+    const newValue = !useAccessibleRoute;
+    setUseAccessibleRoute(newValue);
+
+    // If already navigating and in walking mode, recalculate the route
+    if (isNavigating && navigationMode === 'walking' && selectedPlace) {
+      handleRouteConfirmation(navigationMode, selectedPlace, newValue);
+    }
   };
 
   useEffect(() => {
@@ -164,7 +296,7 @@ export default function MapScreen() {
   const getMarkerDescription = (marker: Marker): string => {
     const severity = marker.obstacleScore >= 4 ? 'High' :
       marker.obstacleScore >= 2 ? 'Medium' : 'Low';
-    return `${severity} severity: ${marker.description || 'No description'}`;
+    return `${severity} severity: ${marker.description || 'No description'} - ${formatDistance(0.2, user?.preferences?.preferedUnit)} away`;
   };
 
   // Handle refresh of markers when modal closes
@@ -189,16 +321,16 @@ export default function MapScreen() {
   }, [currentRegion, location, fetchNearbyMarkers]);
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
+    <SafeAreaView className={`flex-1 ${isDark ? 'bg-gray-900' : 'bg-white'}`}>
       {isLoading ? (
         <View className="flex-1 justify-center items-center p-4">
           <ActivityIndicator size="large" className="mb-2" color="#F1B24A" />
-          <Text className="text-gray-600">Getting your location...</Text>
+          <Text className={`${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Getting your location...</Text>
         </View>
       ) : errorMsg ? (
         <View className="flex-1 justify-center items-center p-4">
           <Text className="text-red-500 text-center mb-4">{errorMsg}</Text>
-          <Text className="text-gray-600 text-center">
+          <Text className={`text-center ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
             Please enable location services and try again.
           </Text>
         </View>
@@ -230,11 +362,47 @@ export default function MapScreen() {
                 onPress={() => handleMarkerPress(marker)}
               />
             ))}
+
+            {/* Display the route polyline if navigating */}
+            {isNavigating && routeCoordinates.length > 0 && (
+              <Polyline
+                coordinates={routeCoordinates}
+                strokeWidth={5}
+                strokeColor="#F1B24A"
+                lineDashPattern={[1]}
+              />
+            )}
+
+            {/* Display destination marker if navigating */}
+            {isNavigating && selectedPlace && selectedPlace.location && (
+              <MapMarker
+                coordinate={{
+                  latitude: selectedPlace.location.latitude,
+                  longitude: selectedPlace.location.longitude,
+                }}
+                pinColor="#F1B24A"
+              >
+                <Callout>
+                  <View className={`p-2.5 w-[200px] ${isDark ? 'bg-gray-800' : 'bg-white'}`}>
+                    <Text className={`text-base font-bold mb-1 ${isDark ? 'text-white' : 'text-black'}`}>{selectedPlace.name}</Text>
+                    <Text className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>{selectedPlace.address}</Text>
+                  </View>
+                </Callout>
+              </MapMarker>
+            )}
           </MapView>
+
+          {/* Search bar */}
+          {!isNavigating && (
+            <PlaceSearchBar
+              onPlaceSelected={handlePlaceSelected}
+              onLocationSelected={handleLocationSelected}
+            />
+          )}
 
           {/* Loading indicator when fetching markers */}
           {isFetchingMarkers && (
-            <View className="absolute top-5 self-center bg-white bg-opacity-80 p-2 rounded-full shadow">
+            <View className={`absolute top-5 self-center p-2 rounded-full shadow ${isDark ? 'bg-gray-800 bg-opacity-80' : 'bg-white bg-opacity-80'}`}>
               <ActivityIndicator size="small" color="#F1B24A" />
             </View>
           )}
@@ -249,13 +417,67 @@ export default function MapScreen() {
 
           {/* Current location button */}
           <TouchableOpacity
-            className="absolute bottom-8 right-5 bg-[#4285F4] rounded-full w-[60px] h-[60px] justify-center items-center shadow-md"
+            className={`absolute bottom-8 right-5 rounded-full w-[60px] h-[60px] justify-center items-center shadow-md ${isDark ? 'bg-gray-800' : 'bg-white'}`}
             onPress={zoomToCurrentLocation}
           >
-            <Ionicons name="locate" size={24} color="white" />
+            <Ionicons name="locate" size={24} color={isDark ? "#ffffff" : "#333333"} />
           </TouchableOpacity>
 
-          {/* Marker add modal */}
+          {/* Navigation info, directions toggle and cancel button */}
+          {isNavigating && routeInfo && (
+            <View className={`absolute top-3 left-2.5 right-2.5 rounded-xl p-4 flex-row items-center justify-between shadow-md ${isDark ? 'bg-gray-800' : 'bg-white'}`}>
+              <View className="flex-row items-center">
+                <View className={`flex-row items-center mr-4 rounded-lg px-2.5 py-1.5 ${isDark ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                  <Ionicons name={navigationMode === 'walking' ? 'walk' : 'car'} size={20} color="#F1B24A" />
+                  <Text className={`ml-1.5 font-semibold ${isDark ? 'text-white' : 'text-gray-800'}`}>
+                    {formatDistance(routeInfo.distance, user?.preferences?.preferedUnit)}
+                  </Text>
+                </View>
+                <View className={`flex-row items-center rounded-lg px-2.5 py-1.5 ${isDark ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                  <Ionicons name="time" size={20} color="#F1B24A" />
+                  <Text className={`ml-1.5 font-semibold ${isDark ? 'text-white' : 'text-gray-800'}`}>{routeInfo.duration} min</Text>
+                </View>
+              </View>
+              <View className="flex-row">
+                {/* Show accessible routing toggle only when walking */}
+                {navigationMode === 'walking' && (
+                  <TouchableOpacity
+                    className={`rounded-lg p-2.5 mx-2 ${useAccessibleRoute ? 'bg-green-600' : isDark ? 'bg-gray-600' : 'bg-gray-300'}`}
+                    onPress={toggleAccessibleRouting}
+                  >
+                    <Ionicons name="accessibility" size={20} color="#ffffff" />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  className={`bg-gray-600 rounded-lg p-2.5 mr-2`}
+                  onPress={toggleDirectionsPanel}
+                >
+                  <Ionicons name="list" size={20} color="#ffffff" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  className="bg-[#F1B24A] rounded-lg p-2.5"
+                  onPress={cancelNavigation}
+                >
+                  <Text className="text-sm font-bold text-white">End</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* Directions Panel */}
+          {location && (
+            <DirectionsPanel
+              steps={routeSteps}
+              visible={showDirections && isNavigating}
+              onClose={() => setShowDirections(false)}
+              currentLocation={{
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude
+              }}
+            />
+          )}
+
+          {/* Add marker modal */}
           <AddMarkerModal
             visible={modalVisible}
             onClose={handleModalClose}
@@ -267,20 +489,41 @@ export default function MapScreen() {
             onClose={() => setDetailsModalVisible(false)}
             marker={selectedMarker}
           />
+
+          {/* Route confirmation modal */}
+          <RouteConfirmationModal
+            visible={routeConfirmationModalVisible}
+            onClose={() => setRouteConfirmationModalVisible(false)}
+            onConfirm={handleRouteConfirmation}
+            placeId={selectedPlace?.id || null}
+            originLocation={location ? {
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude
+            } : null}
+          />
         </View>
       )}
     </SafeAreaView>
   );
 }
 
+// Only style needed for the map to display properly
 const styles = StyleSheet.create({
   map: {
-    width: Dimensions.get('window').width,
-    height: Dimensions.get('window').height,
-    position: 'absolute',
+    width: Dimensions.get("window").width,
+    height: Dimensions.get("window").height,
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
+  },
+  infoPanel: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    padding: 10,
+    zIndex: 1000,
   },
 }); 

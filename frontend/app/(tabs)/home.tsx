@@ -3,9 +3,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import useAuth from "../../stores/auth/hooks/useAuth";
 import React from "react";
 import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "../../stores/theme/useTheme";
+import { formatDistance } from "@/utils/distanceUtils";
 
 export default function UserDashboard() {
   const { user } = useAuth();
+  const { colors, styles, isDark } = useTheme();
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
@@ -34,7 +37,7 @@ export default function UserDashboard() {
                 <Text className="text-xs text-gray-500">Find accessible routes</Text>
               </View>
             </Pressable>
-            
+
             <Pressable className="w-1/2 p-2">
               <View className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                 <View className="bg-green-100 w-10 h-10 rounded-full items-center justify-center mb-2">
@@ -44,7 +47,7 @@ export default function UserDashboard() {
                 <Text className="text-xs text-gray-500">Find accessible places</Text>
               </View>
             </Pressable>
-            
+
             <Pressable className="w-1/2 p-2">
               <View className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                 <View className="bg-purple-100 w-10 h-10 rounded-full items-center justify-center mb-2">
@@ -54,7 +57,7 @@ export default function UserDashboard() {
                 <Text className="text-xs text-gray-500">View saved locations</Text>
               </View>
             </Pressable>
-            
+
             <Pressable className="w-1/2 p-2">
               <View className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
                 <View className="bg-orange-100 w-10 h-10 rounded-full items-center justify-center mb-2">
@@ -77,7 +80,9 @@ export default function UserDashboard() {
               <View key={item} className="mr-4 bg-white p-3 rounded-xl shadow-sm border border-gray-100 w-64">
                 <View className="h-32 bg-gray-200 rounded-lg mb-2" />
                 <Text className="font-medium">Accessible Restaurant {item}</Text>
-                <Text className="text-xs text-gray-500 mb-1">1.{item} km away</Text>
+                <Text className="text-xs text-gray-500 mb-1">
+                  {formatDistance(1.0 + item / 10, user?.preferences?.preferedUnit)} away
+                </Text>
                 <View className="flex-row">
                   <View className="bg-blue-50 rounded-full px-2 py-1 mr-1">
                     <Text className="text-xs text-blue-600">Wheelchair Access</Text>

@@ -6,9 +6,10 @@ import { router } from "expo-router";
 import { useTheme } from "../../stores/theme/useTheme";
 import useAuth from "../../stores/auth/hooks/useAuth";
 import { ThemeToggle } from "../../components/ThemeToggle";
+import { UnitPreferenceSelector } from "../../components/UnitPreferenceSelector";
 
 export default function ProfileScreen() {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const { colors, classes, isDark, styles } = useTheme();
 
   const handleLogout = async () => {
@@ -60,8 +61,8 @@ export default function ProfileScreen() {
                 color="white"
               />
             </View>
-            <Text className="text-2xl font-bold" style={styles.text}>John Doe</Text>
-            <Text style={styles.secondaryText}>john.doe@example.com</Text>
+            <Text className="text-2xl font-bold" style={styles.text}>{user?.displayName || 'User'}</Text>
+            <Text style={styles.secondaryText}>{user?.email || 'email@example.com'}</Text>
           </View>
 
           {/* Menu Items */}
@@ -90,6 +91,14 @@ export default function ProfileScreen() {
                 />
               </Pressable>
             ))}
+          </View>
+
+          {/* Preferences Settings */}
+          <View className="p-4 rounded-lg mb-6" style={styles.card}>
+            <Text className="text-lg font-semibold mb-2" style={styles.text}>
+              Preferences
+            </Text>
+            <UnitPreferenceSelector />
           </View>
 
           {/* Theme Settings */}

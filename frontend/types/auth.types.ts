@@ -1,31 +1,36 @@
 export enum UserRole {
-  USER = 'user',
-  MODERATOR = 'moderator',
-  ADMIN = 'admin',
+  USER = "user",
+  MODERATOR = "moderator",
+  ADMIN = "admin",
 }
 
 export enum TransportMethod {
-  WALKING = 'walking',
-  WHEELCHAIR = 'wheelchair',
-  PUBLIC_TRANSPORT = 'public_transport',
-  CAR = 'car',
+  WALKING = "walking",
+  WHEELCHAIR = "wheelchair",
+  PUBLIC_TRANSPORT = "public_transport",
+  CAR = "car",
 }
 
 export enum Budget {
-  FREE = 'free',
-  LOW = 'low',
-  MEDIUM = 'medium',
-  HIGH = 'high',
+  FREE = "free",
+  LOW = "low",
+  MEDIUM = "medium",
+  HIGH = "high",
 }
 
 export enum ActivityType {
-  DINING = 'dining',
-  ENTERTAINMENT = 'entertainment',
-  EDUCATION = 'education',
-  OUTDOORS = 'outdoors',
-  SHOPPING = 'shopping',
-  SPORT = 'sport',
-  HEALTH = 'health',
+  DINING = "dining",
+  ENTERTAINMENT = "entertainment",
+  EDUCATION = "education",
+  OUTDOORS = "outdoors",
+  SHOPPING = "shopping",
+  SPORT = "sport",
+  HEALTH = "health",
+}
+
+export enum DistanceUnit {
+  KILOMETERS = "kilometers",
+  MILES = "miles",
 }
 
 interface BaseLocation {
@@ -46,6 +51,7 @@ export interface UserPreferences {
   budget: Budget;
   baseLocation: BaseLocation;
   searchRadius: number;
+  preferedUnit: DistanceUnit;
   accessibilityRequirements?: AccessibilityRequirements;
 }
 
@@ -57,4 +63,3 @@ export interface User {
   preferences: UserPreferences;
   isActive: boolean;
 }
-

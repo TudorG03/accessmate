@@ -28,7 +28,7 @@ export default {
       UIBackgroundModes: ["location", "fetch"]
     },
     config: {
-      googleMapsApiKey: process.env.GOOGLE_MAPS_API
+      googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY
     }
   },
   android: {
@@ -44,7 +44,7 @@ export default {
     ],
     config: {
       googleMaps: {
-        apiKey: "AIzaSyBG96VAS_AAWczreNLUU8xD9htO51O8zU8"
+        apiKey: process.env.GOOGLE_MAPS_API_KEY
       }
     }
   },
