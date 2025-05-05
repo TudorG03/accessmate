@@ -12,6 +12,8 @@ import {
 } from "@/types/auth.types";
 import { AuthService } from "./auth.service";
 import { getAccessToken, setAccessToken } from "./auth.token";
+import api, { registerLogoutHandler } from "@/services/api.service";
+import { AuthResponse } from "./auth.types";
 
 const storage = new MMKV();
 
@@ -50,181 +52,176 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set, get) => ({
-      isAuthenticated: false,
-      accessToken: null,
-      user: null,
-      isLoading: false,
-      error: null,
+    (set, get) => {
+      // Create the store object
+      const store = {
+        isAuthenticated: false,
+        accessToken: null,
+        user: null,
+        isLoading: false,
+        error: null,
 
-      register: async (email, password, displayName, preferences) => {
-        set({ isLoading: true, error: null });
-        try {
-          const data = await AuthService.register(
-            email,
-            password,
-            displayName,
-            preferences,
-          );
+        register: async (email, password, displayName, preferences) => {
+          set({ isLoading: true, error: null });
+          try {
+            const data = await AuthService.register(
+              email,
+              password,
+              displayName,
+              preferences,
+            );
 
-          setAccessToken(data.accessToken);
-          set({
-            isAuthenticated: true,
-            accessToken: data.accessToken,
-            user: data.user,
-          });
+            setAccessToken(data.accessToken);
+            set({
+              isAuthenticated: true,
+              accessToken: data.accessToken,
+              user: data.user,
+            });
 
-          if (data.user && data.user.role) {
-            switch (data.user.role) {
-              case UserRole.ADMIN:
-                router.replace("/admin");
-                break;
-              case UserRole.MODERATOR:
-                router.replace("/moderator");
-                break;
-              case UserRole.USER:
-                router.replace("/(tabs)/home");
-                break;
-              default:
-                router.replace("/");
+            if (data.user && data.user.role) {
+              switch (data.user.role) {
+                case UserRole.ADMIN:
+                  router.replace("/admin");
+                  break;
+                case UserRole.MODERATOR:
+                  router.replace("/moderator");
+                  break;
+                case UserRole.USER:
+                  router.replace("/(tabs)/home");
+                  break;
+                default:
+                  router.replace("/");
+              }
+            } else {
+              router.replace("/");
             }
-          } else {
-            router.replace("/");
+          } catch (error) {
+            set({
+              error: error instanceof Error
+                ? error.message
+                : "Registration failed",
+            });
+            console.error("Registration error:", error);
+          } finally {
+            set({ isLoading: false });
           }
-        } catch (error) {
-          set({
-            error: error instanceof Error
-              ? error.message
-              : "Registration failed",
-          });
-          console.error("Registration error:", error);
-        } finally {
-          set({ isLoading: false });
-        }
-      },
+        },
 
-      login: async (email, password) => {
-        set({ isLoading: true, error: null });
-        try {
-          const data = await AuthService.login(email, password);
+        login: async (email, password) => {
+          set({ isLoading: true, error: null });
+          try {
+            const data = await AuthService.login(email, password);
 
-          setAccessToken(data.accessToken);
-          set({
-            isAuthenticated: true,
-            accessToken: data.accessToken,
-            user: data.user,
-          });
+            setAccessToken(data.accessToken);
+            set({
+              isAuthenticated: true,
+              accessToken: data.accessToken,
+              user: data.user,
+            });
 
-          if (data.user && data.user.role) {
-            switch (data.user.role) {
-              case UserRole.ADMIN:
-                router.replace("/admin");
-                break;
-              case UserRole.MODERATOR:
-                router.replace("/moderator");
-                break;
-              case UserRole.USER:
-                router.replace("/(tabs)/home");
-                break;
-              default:
-                router.replace("/");
+            if (data.user && data.user.role) {
+              switch (data.user.role) {
+                case UserRole.ADMIN:
+                  router.replace("/admin");
+                  break;
+                case UserRole.MODERATOR:
+                  router.replace("/moderator");
+                  break;
+                case UserRole.USER:
+                  router.replace("/(tabs)/home");
+                  break;
+                default:
+                  router.replace("/");
+              }
+            } else {
+              router.replace("/");
             }
-          } else {
-            router.replace("/");
+          } catch (error) {
+            set({
+              error: error instanceof Error ? error.message : "Login failed",
+            });
+            console.error("Login error:", error);
+          } finally {
+            set({ isLoading: false });
           }
-        } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : "Login failed",
-          });
-          console.error("Login error:", error);
-        } finally {
-          set({ isLoading: false });
-        }
-      },
+        },
 
-      logout: async () => {
-        set({ isLoading: true, error: null });
-        try {
-          const accessToken = getAccessToken();
+        logout: async () => {
+          set({ isLoading: true, error: null });
+          try {
+            await AuthService.logout();
 
-          if (accessToken) {
-            await AuthService.logout(accessToken);
-          } else {
-            throw new Error("Logout failed");
+            setAccessToken(null);
+            set({
+              isAuthenticated: false,
+              accessToken: null,
+              user: null,
+            });
+
+            router.navigate("/");
+          } catch (error) {
+            console.error("Logout error:", error);
+            setAccessToken(null);
+            set({
+              isAuthenticated: false,
+              accessToken: null,
+              user: null,
+            });
+
+            router.navigate("/");
+          } finally {
+            set({ isLoading: false });
           }
+        },
 
-          setAccessToken(null);
-          set({
-            isAuthenticated: false,
-            accessToken: null,
-            user: null,
-          });
+        refreshToken: async () => {
+          try {
+            const data = await AuthService.refreshToken();
 
-          router.navigate("/");
-        } catch (error) {
-          console.error("Logout error:", error);
-          setAccessToken(null);
-          set({
-            isAuthenticated: false,
-            accessToken: null,
-            user: null,
-          });
+            setAccessToken(data.accessToken);
+            set({
+              accessToken: data.accessToken,
+              isAuthenticated: true,
+            });
+            return true;
+          } catch (error) {
+            console.error("Refresh token error:", error);
+            setAccessToken(null);
+            set({
+              isAuthenticated: false,
+              accessToken: null,
+              user: null,
+            });
+            return false;
+          }
+        },
 
-          router.navigate("/");
-        } finally {
-          set({ isLoading: false });
-        }
-      },
-
-      refreshToken: async () => {
-        try {
-          const data = await AuthService.refreshToken();
-
-          setAccessToken(data.accessToken);
-          set({
-            accessToken: data.accessToken,
-            isAuthenticated: true,
-          });
-          return true;
-        } catch (error) {
-          console.error("Refresh token error:", error);
-          setAccessToken(null);
-          set({
-            isAuthenticated: false,
-            accessToken: null,
-            user: null,
-          });
-          return false;
-        }
-      },
-
-      updateUser: async (userId, userData) => {
-        set({ isLoading: true, error: null });
-        try {
-          const accessToken = getAccessToken();
-
-          if (accessToken) {
+        updateUser: async (userId, userData) => {
+          set({ isLoading: true, error: null });
+          try {
             const data = await AuthService.updateUser(
-              accessToken,
               userId,
               userData,
             );
             set({ user: data.user });
-          } else {
-            throw new Error("No access token");
+          } catch (error) {
+            set({
+              error: error instanceof Error ? error.message : "Update failed",
+            });
+            console.error("Update user error:", error);
+          } finally {
+            set({ isLoading: false });
           }
-        } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : "Update failed",
-          });
-          console.error("Update user error:", error);
-        } finally {
-          set({ isLoading: false });
-        }
-      },
+        },
 
-      clearError: () => set({ error: null }),
-    }),
+        clearError: () => set({ error: null }),
+      };
+
+      // Register the logout handler with the API service
+      registerLogoutHandler(store.logout);
+
+      return store;
+    },
     {
       name: "auth-storage",
       storage: createJSONStorage(() => mmkvStorage),

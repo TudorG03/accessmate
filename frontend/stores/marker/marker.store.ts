@@ -10,7 +10,7 @@ import {
     MarkerLocation,
     MarkerUpdate,
 } from "@/types/marker.types";
-import { getUserId } from "../auth/auth.utils";
+import { getUserId, isAuthenticated } from "../auth/auth.utils";
 import { useAuthStore } from "../auth/auth.store";
 
 // Storage setup for persisting markers
@@ -96,6 +96,15 @@ export const useMarkerStore = create<MarkerState>()(
             // Actions
             fetchMarkers: async () => {
                 try {
+                    // Check if user is authenticated before making the API call
+                    if (!await isAuthenticated()) {
+                        console.log(
+                            "User not authenticated, skipping marker fetch",
+                        );
+                        set({ markers: [], userMarkers: [], isLoading: false });
+                        return;
+                    }
+
                     set({ isLoading: true, error: null });
                     const markers = await MarkerService.getMarkers();
                     // Ensure markers is always an array
@@ -123,6 +132,15 @@ export const useMarkerStore = create<MarkerState>()(
 
             fetchUserMarkers: async () => {
                 try {
+                    // Check if user is authenticated before making the API call
+                    if (!await isAuthenticated()) {
+                        console.log(
+                            "User not authenticated, skipping user marker fetch",
+                        );
+                        set({ markers: [], userMarkers: [], isLoading: false });
+                        return;
+                    }
+
                     set({ isLoading: true, error: null });
                     console.log("👤 Fetching user markers...");
                     const allMarkers = await MarkerService.getMarkers();
@@ -180,6 +198,15 @@ export const useMarkerStore = create<MarkerState>()(
                 radius = 300,
             ) => {
                 try {
+                    // Check if user is authenticated before making the API call
+                    if (!await isAuthenticated()) {
+                        console.log(
+                            "User not authenticated, skipping nearby marker fetch",
+                        );
+                        set({ markers: [], isLoading: false });
+                        return;
+                    }
+
                     set({ isLoading: true, error: null });
                     console.log("🏪 Fetching nearby markers:", {
                         location,

@@ -1,5 +1,6 @@
 import { User } from "@/types/auth.types";
 import api from "@/services/api.service";
+import { AuthResponse, TokenResponse } from "./auth.types";
 
 /**
  * Service for authentication-related API calls
@@ -13,7 +14,7 @@ export const AuthService = {
         password: string,
         displayName: string,
         preferences?: any,
-    ): Promise<{ accessToken: string; user: User }> {
+    ): Promise<AuthResponse> {
         try {
             const response = await api.post("/auth/register", {
                 email,
@@ -56,7 +57,7 @@ export const AuthService = {
     async login(
         email: string,
         password: string,
-    ): Promise<{ accessToken: string; user: User }> {
+    ): Promise<AuthResponse> {
         try {
             const response = await api.post("/auth/login", { email, password });
             return response.data;
@@ -87,7 +88,7 @@ export const AuthService = {
     /**
      * Logout the current user
      */
-    async logout(accessToken: string): Promise<void> {
+    async logout(): Promise<void> {
         try {
             await api.post("/auth/logout");
         } catch (error) {
@@ -99,7 +100,7 @@ export const AuthService = {
     /**
      * Refresh the access token using refresh token cookie
      */
-    async refreshToken(): Promise<{ accessToken: string }> {
+    async refreshToken(): Promise<TokenResponse> {
         try {
             const response = await api.post("/auth/refresh-token");
             return response.data;
@@ -122,7 +123,6 @@ export const AuthService = {
      * Update user information
      */
     async updateUser(
-        accessToken: string,
         userId: string,
         userData: Partial<User>,
     ): Promise<{ user: User }> {

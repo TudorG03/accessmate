@@ -59,7 +59,7 @@ export default {
     // Set this to false in production
     enableDebugTools: true,
     // Google Maps API Keys
-    googleMapsDirectionsApiKey: process.env.GOOGLE_MAPS_DIRECTIONS_API_KEY,
-    googleMapsPlacesApiKey: process.env.GOOGLE_MAPS_PLACES_API_KEY
+    googleMapsDirectionsApiKey: process.env.GOOGLE_MAPS_API_KEY,
+    googleMapsPlacesApiKey: process.env.GOOGLE_MAPS_API_KEY
   }
 }; 

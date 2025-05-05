@@ -16,6 +16,14 @@ let failedQueue: { resolve: Function; reject: Function }[] = [];
 // Auth endpoints that should NOT trigger token refresh
 const AUTH_ENDPOINTS = ["/auth/login", "/auth/register"];
 
+// Function to handle logout - will be set by auth store
+let logoutHandler: (() => Promise<void>) | null = null;
+
+// Register the logout handler
+export const registerLogoutHandler = (handler: () => Promise<void>) => {
+    logoutHandler = handler;
+};
+
 const processQueue = (error: Error | null, token: string | null = null) => {
     failedQueue.forEach((prom) => {
         if (error) {
@@ -85,6 +93,13 @@ api.interceptors.response.use(
             error.response?.status === 401 &&
             !AUTH_ENDPOINTS.some((endpoint) => requestPath.includes(endpoint))
         ) {
+            // Check if we have a token. If not, likely already logged out
+            const hasToken = !!getAccessToken();
+            if (!hasToken) {
+                console.log("🌐 No access token, not attempting token refresh");
+                return Promise.reject(error);
+            }
+
             console.log("🌐 Token expired, attempting refresh...");
             if (isRefreshing) {
                 // If we're already refreshing, add this request to the queue
@@ -138,7 +153,21 @@ api.interceptors.response.use(
                 processQueue(refreshError as Error);
 
                 setAccessToken(null);
-                // No store update here, just clear token
+
+                // Call the logout handler if it's registered
+                if (logoutHandler) {
+                    console.log(
+                        "🌐 Calling logout handler after token refresh failure",
+                    );
+                    try {
+                        await logoutHandler();
+                    } catch (e) {
+                        console.error(
+                            "🌐 Error during logout after refresh failure:",
+                            e,
+                        );
+                    }
+                }
 
                 return Promise.reject(refreshError);
             } finally {

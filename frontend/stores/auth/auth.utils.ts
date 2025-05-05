@@ -8,6 +8,15 @@ export const getAuthHeader = () => {
 };
 
 /**
+ * Check if the user is currently authenticated
+ * @returns True if the user is authenticated, false otherwise
+ */
+export const isAuthenticated = async (): Promise<boolean> => {
+  const { isAuthenticated, accessToken } = useAuthStore.getState();
+  return isAuthenticated && !!accessToken;
+};
+
+/**
  * Get the current user's ID
  * @returns Promise that resolves to the current user's ID
  * @throws Error if user is not authenticated

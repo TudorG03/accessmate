@@ -8,9 +8,14 @@ import { debounce } from 'lodash';
 interface PlaceSearchBarProps {
     onPlaceSelected: (place: { id: string, name: string, address: string }) => void;
     onLocationSelected: (location: { latitude: number, longitude: number }) => void;
+    onPlaceInfoRequested: (placeId: string) => void;
 }
 
-export default function PlaceSearchBar({ onPlaceSelected, onLocationSelected }: PlaceSearchBarProps) {
+export default function PlaceSearchBar({ 
+    onPlaceSelected, 
+    onLocationSelected, 
+    onPlaceInfoRequested 
+}: PlaceSearchBarProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -77,6 +82,12 @@ export default function PlaceSearchBar({ onPlaceSelected, onLocationSelected }: 
         }
     };
 
+    // Function to handle info button press
+    const handleInfoPress = (placeId: string) => {
+        onPlaceInfoRequested(placeId);
+        // Keep the search results open
+    };
+
     // Style based on theme
     const backgroundColor = isDark ? colors.card : '#fff';
     const textColor = isDark ? colors.text : '#000';
@@ -119,20 +130,29 @@ export default function PlaceSearchBar({ onPlaceSelected, onLocationSelected }: 
                     keyExtractor={(item) => item.place_id}
                     style={[styles.predictionList, { backgroundColor }]}
                     renderItem={({ item }) => (
-                        <TouchableOpacity
-                            style={styles.predictionItem}
-                            onPress={() => handleSelectPlace(item)}
-                        >
-                            <Ionicons name="location" size={16} color="#F1B24A" style={styles.locationIcon} />
-                            <View>
-                                <Text style={[styles.mainText, { color: textColor }]}>
-                                    {item.structured_formatting.main_text}
-                                </Text>
-                                <Text style={styles.secondaryText}>
-                                    {item.structured_formatting.secondary_text}
-                                </Text>
-                            </View>
-                        </TouchableOpacity>
+                        <View style={styles.predictionItem}>
+                            <TouchableOpacity
+                                style={styles.predictionContent}
+                                onPress={() => handleSelectPlace(item)}
+                            >
+                                <Ionicons name="location" size={16} color="#F1B24A" style={styles.locationIcon} />
+                                <View style={styles.predictionTextContainer}>
+                                    <Text style={[styles.mainText, { color: textColor }]} numberOfLines={1}>
+                                        {item.structured_formatting.main_text}
+                                    </Text>
+                                    <Text style={styles.secondaryText} numberOfLines={1}>
+                                        {item.structured_formatting.secondary_text}
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+                            
+                            <TouchableOpacity
+                                style={styles.infoButton}
+                                onPress={() => handleInfoPress(item.place_id)}
+                            >
+                                <Ionicons name="information-circle" size={22} color="#F1B24A" />
+                            </TouchableOpacity>
+                        </View>
                     )}
                 />
             )}
@@ -176,7 +196,7 @@ const styles = StyleSheet.create({
     predictionList: {
         marginTop: 5,
         borderRadius: 8,
-        maxHeight: 200,
+        maxHeight: 250,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
@@ -190,6 +210,15 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         borderBottomWidth: 1,
         borderBottomColor: 'rgba(0,0,0,0.05)',
+        justifyContent: 'space-between',
+    },
+    predictionContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+    },
+    predictionTextContainer: {
+        flex: 1,
     },
     locationIcon: {
         marginRight: 12,
@@ -202,5 +231,9 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#666',
         marginTop: 2,
+    },
+    infoButton: {
+        padding: 8,
+        marginLeft: 8,
     },
 }); 

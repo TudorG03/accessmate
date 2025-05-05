@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { View, Text, ActivityIndicator, TouchableOpacity, Dimensions, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import MapView, { Marker as MapMarker, PROVIDER_GOOGLE, Region, Callout, Polyline } from "react-native-maps";
+import MapView, { Marker as MapMarker, PROVIDER_GOOGLE, Region, Callout, Polyline, PointOfInterest } from "react-native-maps";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import AddMarkerModal from "@/components/markers/AddMarkerModal";
 import MarkerDetailsModal from "@/components/markers/MarkerDetailsModal";
 import RouteConfirmationModal from "@/components/map/RouteConfirmationModal";
+import PlaceDetailsModal from "@/components/map/PlaceDetailsModal";
 import PlaceSearchBar from "@/components/map/PlaceSearchBar";
 import { useMarker } from "@/stores/marker/hooks/useMarker";
 import { Marker } from "@/types/marker.types";
@@ -42,6 +43,10 @@ export default function MapScreen() {
   const [showDirections, setShowDirections] = useState(false);
   const [useAccessibleRoute, setUseAccessibleRoute] = useState(true);
 
+  // New state for place details modal
+  const [placeDetailsModalVisible, setPlaceDetailsModalVisible] = useState(false);
+  const [selectedPoiPlaceId, setSelectedPoiPlaceId] = useState<string | null>(null);
+
   const mapRef = useRef<MapView | null>(null);
   const { isDark, colors } = useTheme();
   const router = useRouter();
@@ -62,6 +67,36 @@ export default function MapScreen() {
   const handlePlaceSelected = (place: { id: string, name: string, address: string }) => {
     // Only store the ID when opening the modal - full details will be fetched by the modal
     setSelectedPlace({ id: place.id });
+    setRouteConfirmationModalVisible(true);
+  };
+
+  // Handle request to show place info from search results
+  const handlePlaceInfoRequested = (placeId: string) => {
+    console.log("Showing info for place:", placeId);
+    setSelectedPoiPlaceId(placeId);
+    setPlaceDetailsModalVisible(true);
+  };
+
+  // Handle POI click on the map
+  const handlePoiClick = (event: any) => {
+    console.log("POI clicked:", JSON.stringify(event.nativeEvent));
+
+    // Extract the placeId from the nativeEvent
+    const { placeId, name, coordinate } = event.nativeEvent;
+
+    if (placeId) {
+      console.log(`POI selected: ${name} (${placeId}) at coordinates: ${JSON.stringify(coordinate)}`);
+      setSelectedPoiPlaceId(placeId);
+      setPlaceDetailsModalVisible(true);
+    } else {
+      console.error("No placeId found in POI click event:", event);
+    }
+  };
+
+  // Handle starting navigation from a POI
+  const handleStartNavigation = (placeId: string) => {
+    // Store the place ID and open the route confirmation modal
+    setSelectedPlace({ id: placeId });
     setRouteConfirmationModalVisible(true);
   };
 
@@ -171,6 +206,11 @@ export default function MapScreen() {
     if (isNavigating && navigationMode === 'walking' && selectedPlace) {
       handleRouteConfirmation(navigationMode, selectedPlace, newValue);
     }
+  };
+
+  // Handler for map ready event
+  const handleMapReady = () => {
+    console.log("Map is ready, POI clicks should now work");
   };
 
   useEffect(() => {
@@ -347,6 +387,8 @@ export default function MapScreen() {
             followsUserLocation={true}
             initialRegion={currentRegion || defaultRegion}
             onRegionChangeComplete={handleRegionChangeComplete}
+            onPoiClick={handlePoiClick}
+            onMapReady={handleMapReady}
           >
             {/* Display all obstacle markers from the store */}
             {markers.map((marker, index) => (
@@ -397,6 +439,7 @@ export default function MapScreen() {
             <PlaceSearchBar
               onPlaceSelected={handlePlaceSelected}
               onLocationSelected={handleLocationSelected}
+              onPlaceInfoRequested={handlePlaceInfoRequested}
             />
           )}
 
@@ -500,6 +543,14 @@ export default function MapScreen() {
               latitude: location.coords.latitude,
               longitude: location.coords.longitude
             } : null}
+          />
+
+          {/* Place Details Modal */}
+          <PlaceDetailsModal
+            visible={placeDetailsModalVisible}
+            onClose={() => setPlaceDetailsModalVisible(false)}
+            onStartNavigation={handleStartNavigation}
+            placeId={selectedPoiPlaceId}
           />
         </View>
       )}
