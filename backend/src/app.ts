@@ -6,8 +6,20 @@ import routerMarker from "./routes/marker/marker.router.ts";
 
 const app = new Application();
 
-// Middleware
-app.use(oakCors());
+// CORS middleware
+app.use(oakCors({
+  origin: [
+    "http://localhost:3000",
+    "http://localhost:8081",
+    "http://127.0.0.1:8081",
+    "https://accessmate.app",
+    "exp://localhost:8081",
+  ],
+  credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+}));
+
 app.use(logger.logger);
 app.use(logger.responseTime);
 
@@ -18,7 +30,7 @@ mainRouter
     ctx.response.body = "Default Oak endpoint!";
   })
   .use("/auth", routerAuth.routes())
-  .use("/api/markings", routerMarker.routes());
+  .use("/api/markers", routerMarker.routes());
 
 // Apply routers
 app.use(mainRouter.routes());

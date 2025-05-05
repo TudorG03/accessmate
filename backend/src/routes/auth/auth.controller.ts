@@ -113,8 +113,16 @@ const handleError = (ctx: Context, error: unknown, message: string) => {
 
 export const refreshToken = async (ctx: Context) => {
   try {
+    console.log("Refresh token attempt received:", ctx.request.url.href);
+    console.log("Refresh request headers:", ctx.request.headers);
+    console.log(
+      "Cookies received:",
+      await ctx.cookies.get("refreshToken") || "None",
+    );
+
     const refreshToken = await ctx.cookies.get("refreshToken");
     if (!refreshToken) {
+      console.log("Refresh token not found in cookies");
       ctx.response.status = 401;
       ctx.response.body = { message: "Refresh token not found" };
       return;
@@ -126,11 +134,16 @@ export const refreshToken = async (ctx: Context) => {
     });
 
     if (!user) {
+      console.log(
+        "Invalid or expired refresh token:",
+        refreshToken.substring(0, 10) + "...",
+      );
       ctx.response.status = 401;
       ctx.response.body = { message: "Invalid or expired refresh token" };
       return;
     }
 
+    console.log(`Refresh token valid for user: ${user.email}`);
     const accessToken = await generateAccessToken(user);
     const newRefreshToken = await generateRefreshToken();
     const refreshTokenExpiry = new Date();
@@ -142,9 +155,19 @@ export const refreshToken = async (ctx: Context) => {
     user.refreshTokenExpiry = refreshTokenExpiry;
     await user.save();
 
+    // Updated cookie settings with sameSite and additional options
     await ctx.cookies.set("refreshToken", newRefreshToken, {
+      httpOnly: true,
       path: "/",
       maxAge: refreshTokenExpiryTime * 24 * 60 * 60 * 1000,
+      sameSite: "lax",
+      secure: false, // Set to false for development, true for production
+    });
+
+    console.log("New refresh token cookie set:", {
+      expires: refreshTokenExpiry,
+      path: "/",
+      sameSite: "lax",
     });
 
     ctx.response.status = 200;
@@ -153,6 +176,7 @@ export const refreshToken = async (ctx: Context) => {
       accessToken,
     };
   } catch (error) {
+    console.error("Refresh token error details:", error);
     handleError(ctx, error, "Refresh token error:");
   }
 };
@@ -287,16 +311,22 @@ export const register = async (ctx: Context) => {
 
 export const login = async (ctx: Context) => {
   try {
+    console.log("Login attempt received:", ctx.request.url.href);
+    console.log("Login request headers:", ctx.request.headers);
+
     const body = await ctx.request.body.json() as LoginRequest;
 
     if (!body.email || !body.password) {
+      console.log("Login failed: Missing email or password");
       ctx.response.status = 400;
       ctx.response.body = { message: "Email and password are required" };
       return;
     }
 
+    console.log(`Attempting login for email: ${body.email}`);
     const user = await User.findOne({ email: body.email }).select("+password");
     if (!user) {
+      console.log(`Login failed: User not found for email: ${body.email}`);
       ctx.response.status = 401;
       ctx.response.body = { message: "Invalid credentials" };
       return;
@@ -304,11 +334,13 @@ export const login = async (ctx: Context) => {
 
     const isMatch = await bcrypt.compare(body.password, user.password);
     if (!isMatch) {
+      console.log(`Login failed: Invalid password for email: ${body.email}`);
       ctx.response.status = 401;
       ctx.response.body = { message: "Invalid credentials" };
       return;
     }
 
+    console.log(`Login successful for email: ${body.email}`);
     const accessToken = await generateAccessToken(user);
     const refreshToken = await generateRefreshToken();
 
@@ -322,10 +354,19 @@ export const login = async (ctx: Context) => {
     user.lastLogin = new Date();
     await user.save();
 
+    // Updated cookie settings with sameSite and additional options
     await ctx.cookies.set("refreshToken", refreshToken, {
       httpOnly: true,
       path: "/",
       maxAge: refreshTokenExpiryTime * 24 * 60 * 60 * 1000,
+      sameSite: "lax",
+      secure: false, // Set to false for development, true for production
+    });
+
+    console.log("Refresh token cookie set:", {
+      expires: refreshTokenExpiry,
+      path: "/",
+      sameSite: "lax",
     });
 
     ctx.response.status = 200;
@@ -342,6 +383,7 @@ export const login = async (ctx: Context) => {
       },
     };
   } catch (error) {
+    console.error("Login error details:", error);
     handleError(ctx, error, "Login error:");
   }
 };

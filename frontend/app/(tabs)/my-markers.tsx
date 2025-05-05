@@ -9,9 +9,12 @@ import { useTheme } from '@/stores/theme/useTheme';
 import { useRouter } from 'expo-router';
 import MarkerDetailsModal from '@/components/markers/MarkerDetailsModal';
 import AddMarkerModal from '@/components/markers/AddMarkerModal';
+import useAuth from '@/stores/auth/hooks/useAuth';
+import { MarkerService } from '@/stores/marker/marker.service';
 
 export default function MyMarkersScreen() {
     const { userMarkers, fetchUserMarkers, isLoading, deleteMarker } = useMarker();
+    const { user, isAuthenticated } = useAuth();
     const [refreshing, setRefreshing] = useState(false);
     const [selectedMarker, setSelectedMarker] = useState<Marker | null>(null);
     const [detailsModalVisible, setDetailsModalVisible] = useState(false);
@@ -20,8 +23,48 @@ export default function MyMarkersScreen() {
     const { isDark, colors } = useTheme();
     const router = useRouter();
 
+    // Debug function to verify auth state and marker retrieval
+    const debugMarkerIssues = useCallback(async () => {
+        console.log('🔎 DEBUG MY MARKERS SCREEN 🔎');
+        console.log('🔎 Auth State:', { isAuthenticated, user: user ? { id: user.id, email: user.email } : null });
+
+        try {
+            console.log('🔎 Fetching markers directly...');
+            const response = await MarkerService.getMarkers();
+            console.log('🔎 All markers from API:', response);
+            console.log('🔎 Total markers:', Array.isArray(response) ? response.length : 0);
+
+            if (user && user.id && Array.isArray(response)) {
+                const filteredMarkers = response.filter(marker => marker.userId === user.id);
+                console.log(`🔎 Markers filtered by userId=${user.id}:`, filteredMarkers);
+                console.log('🔎 Filtered count:', filteredMarkers.length);
+
+                if (filteredMarkers.length === 0 && response.length > 0) {
+                    // If we have markers but none match the user ID, log the different user IDs
+                    const userIds = [...new Set(response.map(m => m.userId))];
+                    console.log('🔎 Available userIds in markers:', userIds);
+                    console.log('🔎 USER ID MISMATCH DETECTED - Current user ID does not match any marker userIds');
+                }
+            }
+        } catch (error) {
+            console.error('🔎 Error in debug function:', error);
+        }
+    }, [user, isAuthenticated]);
+
+    // Call debug function when component mounts
+    useEffect(() => {
+        debugMarkerIssues();
+    }, [debugMarkerIssues]);
+
+    // Debug user markers when they change
+    useEffect(() => {
+        console.log('📱 My Markers Screen - userMarkers updated:', userMarkers);
+        console.log('📱 userMarkers count:', Array.isArray(userMarkers) ? userMarkers.length : 0);
+    }, [userMarkers]);
+
     // Load user's markers when the screen is first rendered
     useEffect(() => {
+        console.log('📱 My Markers Screen - Loading user markers on mount');
         loadUserMarkers();
     }, []);
 
@@ -46,6 +89,8 @@ export default function MyMarkersScreen() {
 
     // Handle marker deletion
     const handleDeleteMarker = useCallback(async (markerId: string) => {
+        if (!markerId) return;
+
         Alert.alert(
             'Delete Marker',
             'Are you sure you want to delete this marker?',
@@ -76,12 +121,14 @@ export default function MyMarkersScreen() {
 
     // Handle viewing marker details
     const handleViewMarker = useCallback((marker: Marker) => {
+        if (!marker || !marker.id) return;
         setSelectedMarker(marker);
         setDetailsModalVisible(true);
     }, []);
 
     // Handle editing marker
     const handleEditMarker = useCallback((marker: Marker) => {
+        if (!marker || !marker.id) return;
         setMarkerToEdit(marker);
         setEditModalVisible(true);
     }, []);
@@ -94,7 +141,8 @@ export default function MyMarkersScreen() {
     }, [loadUserMarkers]);
 
     // Format the obstacle type for display
-    const formatObstacleType = (type: string): string => {
+    const formatObstacleType = (type: string | undefined | null): string => {
+        if (!type) return 'Unknown';
         return type.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
     };
 
@@ -156,9 +204,9 @@ export default function MyMarkersScreen() {
                         </View>
                     ) : (
                         <View className="p-4">
-                            {userMarkers.map((marker) => (
+                            {(Array.isArray(userMarkers) ? userMarkers : []).map((marker, idx) => (
                                 <View
-                                    key={`marker-${marker.id}`}
+                                    key={marker.id ? `marker-${marker.id}` : `marker-idx-${idx}`}
                                     className={`mb-4 rounded-lg p-4 shadow-sm ${isDark ? 'bg-dark-card' : 'bg-gray-50'}`}
                                 >
                                     <View className="flex-row justify-between items-start">
@@ -198,36 +246,33 @@ export default function MyMarkersScreen() {
                                         </View>
                                         <View className="flex-row">
                                             <TouchableOpacity
-                                                key={`view-${marker.id}`}
                                                 className="p-2"
                                                 onPress={() => handleViewMarker(marker)}
                                             >
                                                 <Ionicons
-                                                    name="eye"
-                                                    size={20}
-                                                    color={isDark ? colors.primary : '#F1B24A'}
+                                                    name="eye-outline"
+                                                    size={24}
+                                                    color={isDark ? '#F1B24A' : '#F1B24A'}
                                                 />
                                             </TouchableOpacity>
                                             <TouchableOpacity
-                                                key={`edit-${marker.id}`}
-                                                className="p-2 ml-1"
+                                                className="p-2"
                                                 onPress={() => handleEditMarker(marker)}
                                             >
                                                 <Ionicons
-                                                    name="pencil"
-                                                    size={20}
-                                                    color={isDark ? colors.secondary : '#7ED8C3'}
+                                                    name="pencil-outline"
+                                                    size={24}
+                                                    color={isDark ? '#F1B24A' : '#F1B24A'}
                                                 />
                                             </TouchableOpacity>
                                             <TouchableOpacity
-                                                key={`delete-${marker.id}`}
-                                                className="p-2 ml-1"
+                                                className="p-2"
                                                 onPress={() => handleDeleteMarker(marker.id)}
                                             >
                                                 <Ionicons
-                                                    name="trash"
-                                                    size={20}
-                                                    color={isDark ? '#ff6b6b' : '#dc3545'}
+                                                    name="trash-outline"
+                                                    size={24}
+                                                    color={isDark ? '#F1B24A' : '#F1B24A'}
                                                 />
                                             </TouchableOpacity>
                                         </View>

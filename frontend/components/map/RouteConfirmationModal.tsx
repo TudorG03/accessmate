@@ -75,7 +75,7 @@ export default function RouteConfirmationModal({
                 longitude: placeDetails.geometry.location.lng
             };
 
-            const directions = await getDirections(originLocation, destination);
+            const directions = await getDirections(originLocation, destination, mode);
 
             // directions.distance is now a number in kilometers
             setRouteInfo({
@@ -188,7 +188,10 @@ export default function RouteConfirmationModal({
                                     <View className="items-center">
                                         <Text className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Distance</Text>
                                         <Text className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-800'}`}>
-                                            {formatDistance(routeInfo.distance, user?.preferences?.preferedUnit)}
+                                            {routeInfo.distance < 1
+                                                ? `${Math.round(routeInfo.distance * 1000)} m`
+                                                : formatDistance(routeInfo.distance, user?.preferences?.preferedUnit)
+                                            }
                                         </Text>
                                     </View>
                                     <View className="items-center">

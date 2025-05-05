@@ -1,6 +1,5 @@
-import { User, UserPreferences } from "@/types/auth.types";
-import { API_URL } from "@/constants/api";
-import axios from "axios";
+import { User } from "@/types/auth.types";
+import api from "@/services/api.service";
 
 /**
  * Service for authentication-related API calls
@@ -13,30 +12,39 @@ export const AuthService = {
         email: string,
         password: string,
         displayName: string,
-        preferences?: Partial<UserPreferences>,
+        preferences?: any,
     ): Promise<{ accessToken: string; user: User }> {
         try {
-            console.log(
-                `Sending registration request to: ${API_URL}/auth/register`,
-            );
-            const response = await axios.post(
-                `${API_URL}/auth/register`,
-                { email, password, displayName, preferences },
-                {
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    withCredentials: true, // Important for cookies
-                },
-            );
+            const response = await api.post("/auth/register", {
+                email,
+                password,
+                displayName,
+                preferences,
+            });
 
             return response.data;
         } catch (error) {
-            console.error("Registration error details:", error);
-            if (axios.isAxiosError(error) && error.response) {
-                throw new Error(
-                    error.response.data.message || "Registration failed",
-                );
+            if (error.response) {
+                // Extract the specific error message
+                const errorMessage = error.response.data.message ||
+                    "Registration failed";
+
+                // Add more context based on status code
+                if (error.response.status === 400) {
+                    // Bad request - likely validation error
+                    throw new Error(`Validation Error: ${errorMessage}`);
+                } else if (error.response.status === 409) {
+                    // Conflict - likely email already exists
+                    throw new Error(`Account Error: ${errorMessage}`);
+                } else if (error.response.status === 401) {
+                    // Unauthorized
+                    throw new Error(`Authentication Error: ${errorMessage}`);
+                } else if (error.response.status >= 500) {
+                    // Server error
+                    throw new Error(`Server Error: ${errorMessage}`);
+                }
+
+                throw new Error(errorMessage);
             }
             throw error;
         }
@@ -50,21 +58,27 @@ export const AuthService = {
         password: string,
     ): Promise<{ accessToken: string; user: User }> {
         try {
-            const response = await axios.post(
-                `${API_URL}/auth/login`,
-                { email, password },
-                {
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    withCredentials: true, // Important for cookies
-                },
-            );
-
+            const response = await api.post("/auth/login", { email, password });
             return response.data;
         } catch (error) {
-            if (axios.isAxiosError(error) && error.response) {
-                throw new Error(error.response.data.message || "Login failed");
+            if (error.response) {
+                // Extract the specific error message
+                const errorMessage = error.response.data.message ||
+                    "Login failed";
+
+                // Add more context based on status code
+                if (error.response.status === 400) {
+                    // Bad request - likely validation error
+                    throw new Error(`Input Error: ${errorMessage}`);
+                } else if (error.response.status === 401) {
+                    // Unauthorized - likely incorrect credentials
+                    throw new Error(`Authentication Error: ${errorMessage}`);
+                } else if (error.response.status >= 500) {
+                    // Server error
+                    throw new Error(`Server Error: ${errorMessage}`);
+                }
+
+                throw new Error(errorMessage);
             }
             throw error;
         }
@@ -75,16 +89,7 @@ export const AuthService = {
      */
     async logout(accessToken: string): Promise<void> {
         try {
-            await axios.post(
-                `${API_URL}/auth/logout`,
-                {},
-                {
-                    headers: {
-                        Authorization: `Bearer ${accessToken}`,
-                    },
-                    withCredentials: true,
-                },
-            );
+            await api.post("/auth/logout");
         } catch (error) {
             console.error("Logout error:", error);
             // We don't throw here since logout should succeed even with errors
@@ -96,27 +101,25 @@ export const AuthService = {
      */
     async refreshToken(): Promise<{ accessToken: string }> {
         try {
-            const response = await axios.post(
-                `${API_URL}/auth/refresh-token`,
-                {},
-                {
-                    withCredentials: true,
-                },
-            );
-
+            const response = await api.post("/auth/refresh-token");
             return response.data;
         } catch (error) {
-            if (axios.isAxiosError(error) && error.response) {
-                throw new Error(
-                    error.response.data.message || "Token refresh failed",
-                );
+            if (error.response) {
+                const errorMessage = error.response.data.message ||
+                    "Token refresh failed";
+
+                if (error.response.status === 401) {
+                    throw new Error(`Session expired: ${errorMessage}`);
+                }
+
+                throw new Error(errorMessage);
             }
             throw error;
         }
     },
 
     /**
-     * Update a user's profile
+     * Update user information
      */
     async updateUser(
         accessToken: string,
@@ -124,22 +127,22 @@ export const AuthService = {
         userData: Partial<User>,
     ): Promise<{ user: User }> {
         try {
-            const response = await axios.put(
-                `${API_URL}/auth/update/${userId}`,
-                userData,
-                {
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${accessToken}`,
-                    },
-                    withCredentials: true,
-                },
-            );
-
+            const response = await api.put(`/auth/update/${userId}`, userData);
             return response.data;
         } catch (error) {
-            if (axios.isAxiosError(error) && error.response) {
-                throw new Error(error.response.data.message || "Update failed");
+            if (error.response) {
+                const errorMessage = error.response.data.message ||
+                    "Update failed";
+
+                if (error.response.status === 400) {
+                    throw new Error(`Validation Error: ${errorMessage}`);
+                } else if (error.response.status === 403) {
+                    throw new Error(`Permission Error: ${errorMessage}`);
+                } else if (error.response.status === 404) {
+                    throw new Error(`Not Found: ${errorMessage}`);
+                }
+
+                throw new Error(errorMessage);
             }
             throw error;
         }

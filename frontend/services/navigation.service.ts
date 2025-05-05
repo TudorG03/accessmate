@@ -1,24 +1,27 @@
 import { Marker } from "@/types/marker.types";
 import { getDirections } from "./places.service";
 
-// Define obstacle cost weights
-const OBSTACLE_TYPE_WEIGHTS = {
-    STAIRS: 10,
-    NARROW_PATH: 7,
-    STEEP_INCLINE: 8,
-    UNEVEN_SURFACE: 6,
-    OBSTACLE_IN_PATH: 5,
-    POOR_LIGHTING: 4,
-    CONSTRUCTION: 9,
-    MISSING_RAMP: 10,
-    MISSING_CROSSWALK: 9,
-    OTHER: 5,
-};
+// Constants for the grid-based path finding
+const GRID_CELL_SIZE = 1; // meters - size of each grid cell (finer grid)
+const GRID_EXPANSION = 50; // meters - how far to expand the grid from the original route
+const DETOUR_COST_PER_METER = 0.00001; // Negligible detour cost
+const MAX_DETOUR_DISTANCE = 10000; // Allow very large detours
+const ROAD_SEARCH_RADIUS = 50; // meters - how far to search for road nodes
+const MAX_ROAD_DISTANCE = 100; // meters - maximum allowed distance to road
 
-// Define our grid parameters
-const GRID_CELL_SIZE = 5; // meters
-const ROUTE_BUFFER_DISTANCE = 50; // meters on each side of route
-const DEVIATION_PENALTY_PER_10_METERS = 2; // cost penalty for each 10m deviation
+// Obstacle type weights (base costs)
+const OBSTACLE_WEIGHTS = {
+    STAIRS: 1000000,
+    NARROW_PATH: 1000000,
+    STEEP_INCLINE: 1000000,
+    UNEVEN_SURFACE: 1000000,
+    OBSTACLE_IN_PATH: 1000000,
+    POOR_LIGHTING: 1000000,
+    CONSTRUCTION: 1000000,
+    MISSING_RAMP: 1000000,
+    MISSING_CROSSWALK: 1000000,
+    OTHER: 1000000,
+};
 
 interface Point {
     latitude: number;
@@ -28,21 +31,22 @@ interface Point {
 interface GridNode {
     latitude: number;
     longitude: number;
-    cost: number;
-    obstacle: Marker | null;
-    g: number; // A* path cost from start
-    h: number; // A* heuristic to goal
-    f: number; // A* total cost
+    g: number; // Cost from start to this node
+    h: number; // Heuristic cost to end
+    f: number; // Total cost (g + h)
     parent: GridNode | null;
+    isRoad: boolean;
+    obstacleCost: number;
+}
+
+interface RoadSegment {
+    start: Point;
+    end: Point;
+    points: Point[];
 }
 
 /**
- * Calculates an accessible route that avoids obstacles
- * @param origin Starting location
- * @param destination Ending location
- * @param obstacles List of obstacle markers to avoid
- * @param transportMode Walking or driving
- * @returns Optimized route coordinates
+ * Main function to get an accessible route avoiding obstacles
  */
 export async function getAccessibleRoute(
     origin: Point,
@@ -61,344 +65,418 @@ export async function getAccessibleRoute(
         endLocation: Point;
     }>;
 }> {
-    // If not walking or no obstacles, just use regular directions
+    console.log("Starting accessible route calculation...");
+
+    // If not walking or no obstacles, use regular directions
     if (transportMode !== "walking" || obstacles.length === 0) {
-        return getDirections(origin, destination);
+        console.log("Using regular directions (no walking or no obstacles)");
+        // Return the API response as-is
+        return getDirections(origin, destination, transportMode);
     }
 
-    // Get base route from Google
-    const baseRoute = await getDirections(origin, destination);
+    try {
+        // Get base route from Google Directions API
+        const baseRoute = await getDirections(
+            origin,
+            destination,
+            transportMode,
+        );
+        const routeDistance = calculatePathDistance(baseRoute.points);
 
-    // Create grid around the route
-    const grid = createGridAroundRoute(baseRoute.points, obstacles);
+        // Debug log: base route points
+        console.log("Base route points:", baseRoute.points.length);
+        console.log("Obstacles provided:", obstacles.length);
 
-    // Run A* algorithm to find accessible path
-    const optimizedPath = findAccessiblePath(
-        origin,
-        destination,
-        grid,
-        baseRoute.points,
-    );
+        // For very long routes (>3km), skip accessibility routing
+        if (routeDistance > 3000) {
+            console.log("Route too long, using regular directions");
+            // Return the API response as-is
+            return baseRoute;
+        }
 
-    // Simplify path to reduce unnecessary points
-    const simplifiedPath = simplifyPath(optimizedPath);
+        // Filter obstacles to those near the route
+        const relevantObstacles = obstacles.filter((obstacle) =>
+            baseRoute.points.some((point) =>
+                haversineDistance(obstacle.location, point) <= GRID_EXPANSION
+            )
+        );
 
-    // Calculate new distance and duration (approximate)
-    const distanceRatio = calculateDistanceRatio(
-        simplifiedPath,
-        baseRoute.points,
-    );
+        // Debug log: relevant obstacles
+        console.log(
+            "Relevant obstacles:",
+            relevantObstacles.length,
+            relevantObstacles,
+        );
 
-    return {
-        points: simplifiedPath,
-        // Adjust the distance based on the ratio of path lengths
-        distance: baseRoute.distance * distanceRatio,
-        duration: adjustDurationString(baseRoute.duration, distanceRatio),
-        steps: baseRoute.steps, // Keep original steps for now, could be improved in the future
-    };
+        if (relevantObstacles.length === 0) {
+            console.log("No relevant obstacles, using regular directions");
+            // Return the API response as-is
+            return baseRoute;
+        }
+
+        // Create grid around the route
+        const grid = createGrid(baseRoute.points, relevantObstacles);
+
+        // Find accessible path using A* algorithm
+        const accessiblePath = await findAccessiblePath(
+            origin,
+            destination,
+            grid,
+            baseRoute.points,
+        );
+
+        // Calculate new metrics for the custom route
+        const accessibleDistance = calculatePathDistance(accessiblePath);
+        const averageWalkingSpeed = 1.4; // meters per second
+        const accessibleDurationSeconds = accessibleDistance /
+            averageWalkingSpeed;
+        const accessibleDurationMinutes = Math.round(
+            accessibleDurationSeconds / 60,
+        );
+
+        // Convert distance from meters to kilometers for consistency with other API responses
+        const accessibleDistanceKm = accessibleDistance / 1000;
+
+        return {
+            points: accessiblePath,
+            distance: accessibleDistanceKm,
+            duration: accessibleDurationMinutes < 60
+                ? `${accessibleDurationMinutes} mins`
+                : `${Math.floor(accessibleDurationMinutes / 60)} hours ${
+                    accessibleDurationMinutes % 60
+                } mins`,
+            steps: [
+                {
+                    instructions: "Follow the accessible path.",
+                    distance: `${Math.round(accessibleDistance)} m`,
+                    duration: `${accessibleDurationMinutes} mins`,
+                    startLocation: accessiblePath[0],
+                    endLocation: accessiblePath[accessiblePath.length - 1],
+                },
+            ],
+        };
+    } catch (error) {
+        console.error("Error in accessible routing:", error);
+        // Return the API response as-is on error
+        return getDirections(origin, destination, transportMode);
+    }
 }
 
 /**
- * Creates a grid of nodes around the route
+ * Create a grid around the route for path finding
  */
-function createGridAroundRoute(
-    routePoints: Point[],
-    obstacles: Marker[],
-): GridNode[][] {
-    // Find bounding box of route with buffer
-    let minLat = Infinity, maxLat = -Infinity;
-    let minLng = Infinity, maxLng = -Infinity;
+function createGrid(routePoints: Point[], obstacles: Marker[]): GridNode[][] {
+    // Get bounding box of the route
+    const { minLat, maxLat, minLng, maxLng } = getBoundingBox(routePoints);
 
-    routePoints.forEach((point) => {
-        minLat = Math.min(minLat, point.latitude);
-        maxLat = Math.max(maxLat, point.latitude);
-        minLng = Math.min(minLng, point.longitude);
-        maxLng = Math.max(maxLng, point.longitude);
-    });
+    // Calculate grid dimensions with higher precision
+    const latStep = GRID_CELL_SIZE / 111000; // Approximate meters to degrees
+    const lngStep = GRID_CELL_SIZE /
+        (111000 * Math.cos((minLat + maxLat) / 2 * Math.PI / 180));
 
-    // Add buffer around route (convert meters to approximate degrees)
-    // ~0.0001 degrees is about 11 meters at the equator
-    const bufferDegrees = ROUTE_BUFFER_DISTANCE * 0.00001;
-    minLat -= bufferDegrees;
-    maxLat += bufferDegrees;
-    minLng -= bufferDegrees;
-    maxLng += bufferDegrees;
+    const gridWidth = Math.ceil((maxLng - minLng) / lngStep) + 2;
+    const gridHeight = Math.ceil((maxLat - minLat) / latStep) + 2;
 
-    // Calculate grid dimensions
-    const latRange = maxLat - minLat;
-    const lngRange = maxLng - minLng;
-
-    // Convert grid cell size from meters to approximate degrees
-    const cellSizeDegrees = GRID_CELL_SIZE * 0.00001;
-
-    // Calculate grid dimensions
-    const rows = Math.ceil(latRange / cellSizeDegrees);
-    const cols = Math.ceil(lngRange / cellSizeDegrees);
-
-    // Initialize grid with nodes
+    // Initialize grid
     const grid: GridNode[][] = [];
-    for (let r = 0; r < rows; r++) {
-        grid[r] = [];
-        for (let c = 0; c < cols; c++) {
-            const latitude = minLat + (r * cellSizeDegrees);
-            const longitude = minLng + (c * cellSizeDegrees);
+    for (let i = 0; i < gridHeight; i++) {
+        grid[i] = [];
+        for (let j = 0; j < gridWidth; j++) {
+            const lat = minLat + (i - 1) * latStep;
+            const lng = minLng + (j - 1) * lngStep;
 
-            grid[r][c] = {
-                latitude,
-                longitude,
-                cost: 1, // Base cost
-                obstacle: null,
+            // Calculate obstacle cost for this cell
+            const obstacleCost = calculateCellObstacleCost(
+                { latitude: lat, longitude: lng },
+                obstacles,
+            );
+
+            grid[i][j] = {
+                latitude: lat,
+                longitude: lng,
                 g: Infinity,
                 h: 0,
                 f: Infinity,
                 parent: null,
+                isRoad: true, // Allow all cells to be traversable for now
+                obstacleCost,
             };
         }
     }
 
-    // Apply obstacle costs to grid
-    obstacles.forEach((obstacle) => {
-        // Calculate which grid cells are affected by this obstacle
-        const obstacleCost = calculateObstacleCost(obstacle);
-        const obstacleRadius = Math.max(5, obstacle.obstacleScore * 3); // meters
-        const radiusDegrees = obstacleRadius * 0.00001;
-
-        // Find affected grid cells
-        const r1 = Math.max(
-            0,
-            Math.floor(
-                (obstacle.location.latitude - minLat - radiusDegrees) /
-                    cellSizeDegrees,
-            ),
-        );
-        const r2 = Math.min(
-            rows - 1,
-            Math.ceil(
-                (obstacle.location.latitude - minLat + radiusDegrees) /
-                    cellSizeDegrees,
-            ),
-        );
-        const c1 = Math.max(
-            0,
-            Math.floor(
-                (obstacle.location.longitude - minLng - radiusDegrees) /
-                    cellSizeDegrees,
-            ),
-        );
-        const c2 = Math.min(
-            cols - 1,
-            Math.ceil(
-                (obstacle.location.longitude - minLng + radiusDegrees) /
-                    cellSizeDegrees,
-            ),
-        );
-
-        // Apply costs to affected cells
-        for (let r = r1; r <= r2; r++) {
-            for (let c = c1; c <= c2; c++) {
-                const node = grid[r][c];
-                const distance = haversineDistance(
-                    { latitude: node.latitude, longitude: node.longitude },
-                    {
-                        latitude: obstacle.location.latitude,
-                        longitude: obstacle.location.longitude,
-                    },
-                );
-
-                // Apply inverse-square falloff for cost
-                if (distance <= obstacleRadius) {
-                    // If node already has an obstacle with higher cost, keep that one
-                    const newCost = obstacleCost *
-                        (1 - (distance / obstacleRadius));
-
-                    if (node.obstacle === null || newCost > node.cost) {
-                        node.cost = newCost;
-                        node.obstacle = obstacle;
-                    }
-                }
-            }
-        }
-    });
+    // (Optional) Still mark road nodes for future use, but all cells are traversable
+    // const roadSegments = extractRoadSegments(routePoints);
+    // markRoadNetwork(grid, roadSegments);
 
     return grid;
 }
 
 /**
- * Finds an accessible path using A* algorithm
+ * Extract road segments from route points
  */
-function findAccessiblePath(
+function extractRoadSegments(routePoints: Point[]): RoadSegment[] {
+    const segments: RoadSegment[] = [];
+
+    for (let i = 1; i < routePoints.length; i++) {
+        const start = routePoints[i - 1];
+        const end = routePoints[i];
+
+        // Create intermediate points for better road representation
+        const points = interpolatePoints(start, end, GRID_CELL_SIZE);
+
+        segments.push({
+            start,
+            end,
+            points,
+        });
+    }
+
+    return segments;
+}
+
+/**
+ * Interpolate points between two coordinates
+ */
+function interpolatePoints(
+    start: Point,
+    end: Point,
+    stepSize: number,
+): Point[] {
+    const points: Point[] = [];
+    const distance = haversineDistance(start, end);
+    const steps = Math.ceil(distance / stepSize);
+
+    for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        points.push({
+            latitude: start.latitude + t * (end.latitude - start.latitude),
+            longitude: start.longitude + t * (end.longitude - start.longitude),
+        });
+    }
+
+    return points;
+}
+
+/**
+ * Mark road network in the grid
+ */
+function markRoadNetwork(
+    grid: GridNode[][],
+    roadSegments: RoadSegment[],
+): void {
+    // First pass: mark all road points
+    for (const segment of roadSegments) {
+        for (const point of segment.points) {
+            const node = findClosestGridNode(point, grid);
+            if (node) {
+                node.isRoad = true;
+            }
+        }
+    }
+
+    // Second pass: connect road segments
+    for (let i = 0; i < roadSegments.length - 1; i++) {
+        const currentSegment = roadSegments[i];
+        const nextSegment = roadSegments[i + 1];
+
+        // Connect end of current segment to start of next segment
+        const endNode = findClosestGridNode(currentSegment.end, grid);
+        const startNode = findClosestGridNode(nextSegment.start, grid);
+
+        if (endNode && startNode) {
+            // Mark nodes along the connection as road nodes
+            const connectionPoints = interpolatePoints(
+                { latitude: endNode.latitude, longitude: endNode.longitude },
+                {
+                    latitude: startNode.latitude,
+                    longitude: startNode.longitude,
+                },
+                GRID_CELL_SIZE,
+            );
+
+            for (const point of connectionPoints) {
+                const node = findClosestGridNode(point, grid);
+                if (node) {
+                    node.isRoad = true;
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Calculate obstacle cost for a grid cell
+ */
+function calculateCellObstacleCost(point: Point, obstacles: Marker[]): number {
+    let maxCost = 0;
+
+    for (const obstacle of obstacles) {
+        const distance = haversineDistance(point, obstacle.location);
+        if (distance <= GRID_CELL_SIZE) {
+            // Calculate weighted cost based on obstacle type and severity
+            const baseCost = OBSTACLE_WEIGHTS[obstacle.obstacleType] ||
+                OBSTACLE_WEIGHTS.OTHER;
+            const severityWeight = obstacle.obstacleScore / 5; // Normalize to 0-1
+            const weightedCost = baseCost * severityWeight;
+
+            // Apply distance decay
+            const distanceDecay = 1 - (distance / GRID_CELL_SIZE);
+            const finalCost = weightedCost * distanceDecay;
+
+            maxCost = Math.max(maxCost, finalCost);
+        }
+    }
+
+    if (maxCost > 0) {
+        console.log("Obstacle cost at", point, ":", maxCost);
+    }
+
+    return maxCost;
+}
+
+/**
+ * Find accessible path using A* algorithm
+ */
+async function findAccessiblePath(
     start: Point,
     end: Point,
     grid: GridNode[][],
     originalRoute: Point[],
-): Point[] {
-    if (grid.length === 0 || grid[0].length === 0) {
-        return originalRoute; // No grid, return original path
-    }
+): Promise<Point[]> {
+    const openSet: GridNode[] = [];
+    const closedSet: Set<GridNode> = new Set();
 
-    // Find grid indices of start and end points
-    const startNode = findClosestGridNode(start, grid);
-    const endNode = findClosestGridNode(end, grid);
+    // Find start and end nodes that are on roads
+    const startNode = findClosestRoadNode(start, grid);
+    const endNode = findClosestRoadNode(end, grid);
 
     if (!startNode || !endNode) {
+        // If we can't find valid road nodes, try to find the closest points on the original route
+        const closestStart = findClosestPointOnRoute(start, originalRoute);
+        const closestEnd = findClosestPointOnRoute(end, originalRoute);
+
+        if (!closestStart || !closestEnd) {
+            throw new Error(
+                `Could not find valid road nodes. Start distance: ${
+                    startNode ? "valid" : "too far"
+                }, ` +
+                    `End distance: ${endNode ? "valid" : "too far"}. ` +
+                    `Please try a different route or adjust your start/end points.`,
+            );
+        }
+
+        // Use the closest points on the original route
         return originalRoute;
     }
 
-    // Initialize A* algorithm
-    const openSet: GridNode[] = [];
-    const closedSet = new Set<GridNode>();
-
-    // Set start node properties
+    // Initialize start node
     startNode.g = 0;
     startNode.h = heuristic(startNode, endNode);
-    startNode.f = startNode.g + startNode.h;
-    startNode.parent = null;
-
+    startNode.f = startNode.h;
     openSet.push(startNode);
 
-    // A* main loop
     while (openSet.length > 0) {
-        // Find node with lowest f score
-        let current = openSet[0];
-        let currentIndex = 0;
+        // Get node with lowest f score
+        const current = getLowestFScore(openSet);
 
-        for (let i = 1; i < openSet.length; i++) {
-            if (openSet[i].f < current.f) {
-                current = openSet[i];
-                currentIndex = i;
-            }
-        }
-
-        // Remove current from open set and add to closed set
-        openSet.splice(currentIndex, 1);
-        closedSet.add(current);
-
-        // If we reached the end node, reconstruct and return the path
+        // Check if we've reached the end
         if (current === endNode) {
             return reconstructPath(current);
         }
 
-        // Get neighbors
-        const neighbors = getNeighbors(current, grid);
+        // Move current from open to closed set
+        openSet.splice(openSet.indexOf(current), 1);
+        closedSet.add(current);
+
+        // Get neighbors that are on roads and connected to current node
+        const neighbors = getConnectedRoadNeighbors(current, grid);
 
         for (const neighbor of neighbors) {
-            // Skip if already evaluated
             if (closedSet.has(neighbor)) continue;
 
-            // Calculate tentative g score
-            // Base distance cost + obstacle cost + deviation penalty
-            const distCost = haversineDistance(
-                { latitude: current.latitude, longitude: current.longitude },
-                { latitude: neighbor.latitude, longitude: neighbor.longitude },
-            );
+            // Calculate tentative g score with higher penalty for non-road nodes
+            const distance = haversineDistance(current, neighbor);
+            const detourCost = calculateDetourCost(neighbor, originalRoute);
+            const obstacleCost = neighbor.obstacleCost;
 
-            // Calculate deviation penalty based on distance to original route
-            const closestRoutePoint = findClosestPointOnRoute(
-                { latitude: neighbor.latitude, longitude: neighbor.longitude },
-                originalRoute,
-            );
-            const deviationDist = haversineDistance(
-                { latitude: neighbor.latitude, longitude: neighbor.longitude },
-                closestRoutePoint,
-            );
-            const deviationPenalty = (deviationDist / 10) *
-                DEVIATION_PENALTY_PER_10_METERS;
+            // Very high penalty for non-road nodes
+            const roadPenalty = neighbor.isRoad ? 1 : 10000;
 
-            // Total segment cost
-            const totalSegmentCost = distCost + (neighbor.cost * 50) +
-                deviationPenalty;
-            const tentativeG = current.g + totalSegmentCost;
+            const tentativeG = current.g +
+                distance * (1 + obstacleCost + detourCost) * roadPenalty;
 
-            // Skip if this path to neighbor is worse
-            if (tentativeG >= neighbor.g) continue;
+            if (!openSet.includes(neighbor)) {
+                openSet.push(neighbor);
+            } else if (tentativeG >= neighbor.g) {
+                continue;
+            }
 
-            // This path is better, record it
+            // This path is better
             neighbor.parent = current;
             neighbor.g = tentativeG;
             neighbor.h = heuristic(neighbor, endNode);
             neighbor.f = neighbor.g + neighbor.h;
-
-            // Add to open set if not already there
-            if (!openSet.includes(neighbor)) {
-                openSet.push(neighbor);
-            }
         }
     }
 
-    // No path found, return original
+    // If no path found, return the original route
+    console.warn("No accessible path found, falling back to original route");
     return originalRoute;
 }
 
 /**
- * Find closest grid node to a point
+ * Find closest node that is on a road
  */
-function findClosestGridNode(
+function findClosestRoadNode(
     point: Point,
     grid: GridNode[][],
 ): GridNode | null {
-    let closestNode: GridNode | null = null;
-    let minDistance = Infinity;
-
-    for (let r = 0; r < grid.length; r++) {
-        for (let c = 0; c < grid[r].length; c++) {
-            const node = grid[r][c];
-            const distance = haversineDistance(
-                point,
-                { latitude: node.latitude, longitude: node.longitude },
-            );
-
-            if (distance < minDistance) {
-                minDistance = distance;
-                closestNode = node;
-            }
-        }
-    }
-
-    return closestNode;
+    // Now, just find the closest grid node (all are traversable)
+    return findClosestGridNode(point, grid);
 }
 
 /**
- * Get neighboring nodes in the grid
+ * Get neighbors that are on roads and connected to the current node
  */
-function getNeighbors(node: GridNode, grid: GridNode[][]): GridNode[] {
+function getConnectedRoadNeighbors(
+    node: GridNode,
+    grid: GridNode[][],
+): GridNode[] {
     const neighbors: GridNode[] = [];
+    const [row, col] = findNodePosition(node, grid);
 
-    // Find row and column indices of the node
-    let nodeRow = -1, nodeCol = -1;
+    if (!row) return neighbors;
 
-    outerLoop:
-    for (let r = 0; r < grid.length; r++) {
-        for (let c = 0; c < grid[r].length; c++) {
-            if (grid[r][c] === node) {
-                nodeRow = r;
-                nodeCol = c;
-                break outerLoop;
+    // Check 8 surrounding cells
+    for (let i = -1; i <= 1; i++) {
+        for (let j = -1; j <= 1; j++) {
+            if (i === 0 && j === 0) continue;
+
+            const newRow = row + i;
+            const newCol = col + j;
+
+            if (
+                newRow >= 0 && newRow < grid.length &&
+                newCol >= 0 && newCol < grid[0].length
+            ) {
+                const neighbor = grid[newRow][newCol];
+                // Remove road-only restriction: allow all cells
+                // if (neighbor.isRoad) {
+                //     // Check if the path between nodes is clear
+                //     const pathPoints = interpolatePoints(
+                //         { latitude: node.latitude, longitude: node.longitude },
+                //         { latitude: neighbor.latitude, longitude: neighbor.longitude },
+                //         GRID_CELL_SIZE / 2
+                //     );
+                //     if (pathPoints.every(point => {
+                //         const pathNode = findClosestGridNode(point, grid);
+                //         return pathNode?.isRoad;
+                //     })) {
+                //         neighbors.push(neighbor);
+                //     }
+                // }
+                neighbors.push(neighbor);
             }
-        }
-    }
-
-    if (nodeRow === -1 || nodeCol === -1) {
-        return neighbors; // Node not found in grid
-    }
-
-    // Check 8 directions
-    const directions = [
-        [-1, 0],
-        [1, 0],
-        [0, -1],
-        [0, 1], // Cardinal
-        [-1, -1],
-        [-1, 1],
-        [1, -1],
-        [1, 1], // Diagonal
-    ];
-
-    for (const [dr, dc] of directions) {
-        const r = nodeRow + dr;
-        const c = nodeCol + dc;
-
-        if (r >= 0 && r < grid.length && c >= 0 && c < grid[r].length) {
-            neighbors.push(grid[r][c]);
         }
     }
 
@@ -406,17 +484,54 @@ function getNeighbors(node: GridNode, grid: GridNode[][]): GridNode[] {
 }
 
 /**
- * Calculate heuristic (straight-line distance to goal)
+ * Calculate detour cost based on distance from original route
  */
-function heuristic(a: GridNode, b: GridNode): number {
-    return haversineDistance(
-        { latitude: a.latitude, longitude: a.longitude },
-        { latitude: b.latitude, longitude: b.longitude },
+function calculateDetourCost(node: GridNode, originalRoute: Point[]): number {
+    const minDistance = findMinimumDistanceToRoute(node, originalRoute);
+    return Math.min(
+        minDistance * DETOUR_COST_PER_METER,
+        MAX_DETOUR_DISTANCE * DETOUR_COST_PER_METER,
     );
 }
 
 /**
- * Reconstruct path from A* result
+ * Get neighboring nodes for A* algorithm
+ */
+function getNeighbors(node: GridNode, grid: GridNode[][]): GridNode[] {
+    const neighbors: GridNode[] = [];
+    const [row, col] = findNodePosition(node, grid);
+
+    if (!row) return neighbors;
+
+    // Check 8 surrounding cells
+    for (let i = -1; i <= 1; i++) {
+        for (let j = -1; j <= 1; j++) {
+            if (i === 0 && j === 0) continue;
+
+            const newRow = row + i;
+            const newCol = col + j;
+
+            if (
+                newRow >= 0 && newRow < grid.length &&
+                newCol >= 0 && newCol < grid[0].length
+            ) {
+                neighbors.push(grid[newRow][newCol]);
+            }
+        }
+    }
+
+    return neighbors;
+}
+
+/**
+ * Heuristic function for A* (Euclidean distance)
+ */
+function heuristic(a: GridNode, b: GridNode): number {
+    return haversineDistance(a, b);
+}
+
+/**
+ * Reconstruct path from end node
  */
 function reconstructPath(endNode: GridNode): Point[] {
     const path: Point[] = [];
@@ -434,73 +549,104 @@ function reconstructPath(endNode: GridNode): Point[] {
 }
 
 /**
- * Find closest point on route to a given point
+ * Get bounding box of a set of points
  */
-function findClosestPointOnRoute(point: Point, route: Point[]): Point {
-    let closestPoint = route[0];
-    let minDistance = haversineDistance(point, route[0]);
+function getBoundingBox(
+    points: Point[],
+): { minLat: number; maxLat: number; minLng: number; maxLng: number } {
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+    let minLng = Infinity;
+    let maxLng = -Infinity;
 
-    for (let i = 1; i < route.length; i++) {
-        const distance = haversineDistance(point, route[i]);
-        if (distance < minDistance) {
-            minDistance = distance;
-            closestPoint = route[i];
-        }
+    for (const point of points) {
+        minLat = Math.min(minLat, point.latitude);
+        maxLat = Math.max(maxLat, point.latitude);
+        minLng = Math.min(minLng, point.longitude);
+        minLng = Math.min(minLng, point.longitude);
     }
 
-    return closestPoint;
+    return { minLat, maxLat, minLng, maxLng };
 }
 
 /**
- * Simplifies a path by removing unnecessary points
- * Uses Douglas-Peucker algorithm to reduce points while preserving the path shape
+ * Find closest grid node to a point
  */
-function simplifyPath(path: Point[]): Point[] {
-    if (path.length <= 2) return path;
+function findClosestGridNode(
+    point: Point,
+    grid: GridNode[][],
+): GridNode | null {
+    let closest: GridNode | null = null;
+    let minDistance = Infinity;
 
-    // Threshold distance in meters
-    const threshold = 2;
-
-    // Find the point with the maximum distance from line segment
-    const findFurthestPoint = (
-        start: number,
-        end: number,
-    ): { index: number; distance: number } => {
-        let maxDist = 0;
-        let index = 0;
-
-        for (let i = start + 1; i < end; i++) {
-            const dist = perpendicularDistance(path[i], path[start], path[end]);
-            if (dist > maxDist) {
-                maxDist = dist;
-                index = i;
+    for (const row of grid) {
+        for (const node of row) {
+            const distance = haversineDistance(point, node);
+            if (distance < minDistance) {
+                minDistance = distance;
+                closest = node;
             }
         }
+    }
 
-        return { index, distance: maxDist };
-    };
+    return closest;
+}
 
-    // Douglas-Peucker recursive function
-    const douglasPeucker = (start: number, end: number): Point[] => {
-        // Find furthest point and its distance
-        const { index, distance } = findFurthestPoint(start, end);
-
-        // If max distance is greater than threshold, recursively simplify
-        if (distance > threshold) {
-            // Recursive call
-            const firstHalf = douglasPeucker(start, index);
-            const secondHalf = douglasPeucker(index, end);
-
-            // Join the two halves (excluding duplicate middle point)
-            return [...firstHalf.slice(0, -1), ...secondHalf];
-        } else {
-            // Below threshold - use just the endpoints
-            return [path[start], path[end]];
+/**
+ * Find position of a node in the grid
+ */
+function findNodePosition(
+    node: GridNode,
+    grid: GridNode[][],
+): [number, number] | [null, null] {
+    for (let i = 0; i < grid.length; i++) {
+        for (let j = 0; j < grid[i].length; j++) {
+            if (grid[i][j] === node) {
+                return [i, j];
+            }
         }
-    };
+    }
+    return [null, null];
+}
 
-    // Start recursion with first and last points
-    return douglasPeucker(0, path.length - 1);
+/**
+ * Get node with lowest f score
+ */
+function getLowestFScore(nodes: GridNode[]): GridNode {
+    return nodes.reduce((min, node) => node.f < min.f ? node : min);
+}
+
+/**
+ * Calculate distance between two points using Haversine formula
+ */
+function haversineDistance(point1: Point, point2: Point): number {
+    const R = 6371000; // Earth's radius in meters
+    const dLat = (point2.latitude - point1.latitude) * Math.PI / 180;
+    const dLng = (point2.longitude - point1.longitude) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(point1.latitude * Math.PI / 180) *
+            Math.cos(point2.latitude * Math.PI / 180) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+/**
+ * Find minimum distance from a point to any point on a route
+ */
+function findMinimumDistanceToRoute(point: Point, route: Point[]): number {
+    let minDistance = Infinity;
+
+    for (let i = 1; i < route.length; i++) {
+        const distance = perpendicularDistance(
+            point,
+            route[i - 1],
+            route[i],
+        );
+        minDistance = Math.min(minDistance, distance);
+    }
+
+    return minDistance;
 }
 
 /**
@@ -511,83 +657,33 @@ function perpendicularDistance(
     lineStart: Point,
     lineEnd: Point,
 ): number {
-    // If start and end are the same point, return distance to that point
-    if (
-        lineStart.latitude === lineEnd.latitude &&
-        lineStart.longitude === lineEnd.longitude
-    ) {
-        return haversineDistance(point, lineStart);
+    const A = point.latitude - lineStart.latitude;
+    const B = point.longitude - lineStart.longitude;
+    const C = lineEnd.latitude - lineStart.latitude;
+    const D = lineEnd.longitude - lineStart.longitude;
+
+    const dot = A * C + B * D;
+    const len_sq = C * C + D * D;
+    let param = -1;
+
+    if (len_sq !== 0) {
+        param = dot / len_sq;
     }
 
-    // Calculate perpendicular distance using the formula:
-    // d = |cross_product(end-start, point-start)| / |end-start|
+    let xx, yy;
 
-    // Convert lat/lng to Cartesian coordinates for simplicity
-    // This is an approximation, but works well for short distances
-    const earthRadius = 6371000; // meters
+    if (param < 0) {
+        xx = lineStart.latitude;
+        yy = lineStart.longitude;
+    } else if (param > 1) {
+        xx = lineEnd.latitude;
+        yy = lineEnd.longitude;
+    } else {
+        xx = lineStart.latitude + param * C;
+        yy = lineStart.longitude + param * D;
+    }
 
-    // Convert to radians
-    const p = {
-        x: point.longitude * Math.PI / 180,
-        y: point.latitude * Math.PI / 180,
-    };
-    const s = {
-        x: lineStart.longitude * Math.PI / 180,
-        y: lineStart.latitude * Math.PI / 180,
-    };
-    const e = {
-        x: lineEnd.longitude * Math.PI / 180,
-        y: lineEnd.latitude * Math.PI / 180,
-    };
-
-    // Calculate vectors
-    const vs = {
-        x: s.x * earthRadius * Math.cos(s.y),
-        y: s.y * earthRadius,
-    };
-    const ve = {
-        x: e.x * earthRadius * Math.cos(e.y),
-        y: e.y * earthRadius,
-    };
-    const vp = {
-        x: p.x * earthRadius * Math.cos(p.y),
-        y: p.y * earthRadius,
-    };
-
-    // Line vector
-    const lineVec = {
-        x: ve.x - vs.x,
-        y: ve.y - vs.y,
-    };
-
-    // Point vector from start
-    const pointVec = {
-        x: vp.x - vs.x,
-        y: vp.y - vs.y,
-    };
-
-    // Line length
-    const lineLength = Math.sqrt(lineVec.x * lineVec.x + lineVec.y * lineVec.y);
-
-    // Cross product magnitude
-    const crossProduct = Math.abs(
-        lineVec.x * pointVec.y - lineVec.y * pointVec.x,
-    );
-
-    // Perpendicular distance
-    return crossProduct / lineLength;
-}
-
-/**
- * Calculate ratio of new path distance to original
- */
-function calculateDistanceRatio(
-    newPath: Point[],
-    originalPath: Point[],
-): number {
-    const newDistance = calculatePathDistance(newPath);
-    const originalDistance = calculatePathDistance(originalPath);
-    return newDistance / originalDistance;
+    return haversineDistance(point, { latitude: xx, longitude: yy });
 }
 
 /**
@@ -602,66 +698,52 @@ function calculatePathDistance(path: Point[]): number {
 }
 
 /**
- * Calculate distance between two points using Haversine formula
+ * Adjust duration based on distance ratio
  */
-function haversineDistance(point1: Point, point2: Point): number {
-    const R = 6371e3; // Earth radius in meters
-    const φ1 = point1.latitude * Math.PI / 180;
-    const φ2 = point2.latitude * Math.PI / 180;
-    const Δφ = (point2.latitude - point1.latitude) * Math.PI / 180;
-    const Δλ = (point2.longitude - point1.longitude) * Math.PI / 180;
+function adjustDuration(duration: string, ratio: number): string {
+    // Parse duration string (e.g., "5 mins" or "1 hour 30 mins")
+    const parts = duration.split(" ");
+    let totalMinutes = 0;
 
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-        Math.cos(φ1) * Math.cos(φ2) *
-            Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c; // Distance in meters
-}
-
-/**
- * Adjusts a distance value based on a ratio
- */
-function adjustDistanceString(distanceStr: string, ratio: number): string {
-    // Extract numeric part from distance string (e.g., "5.2 km" -> 5.2)
-    const match = distanceStr.match(/(\d+(\.\d+)?)/);
-    if (!match) return distanceStr;
-
-    const value = parseFloat(match[0]);
-    return (value * ratio).toFixed(1);
-}
-
-/**
- * Adjust duration string based on ratio
- */
-function adjustDurationString(durationStr: string, ratio: number): string {
-    // Parse duration like "15 mins" or "1 hour 20 mins"
-    const hourMatch = durationStr.match(/(\d+)\s*hour/);
-    const minMatch = durationStr.match(/(\d+)\s*min/);
-
-    let minutes = 0;
-    if (hourMatch) minutes += parseInt(hourMatch[1]) * 60;
-    if (minMatch) minutes += parseInt(minMatch[1]);
-
-    const newMinutes = Math.round(minutes * ratio);
-
-    if (newMinutes >= 60) {
-        const hours = Math.floor(newMinutes / 60);
-        const mins = newMinutes % 60;
-        return `${hours} hour${hours > 1 ? "s" : ""} ${
-            mins > 0 ? `${mins} min${mins > 1 ? "s" : ""}` : ""
-        }`;
+    for (let i = 0; i < parts.length; i++) {
+        if (parts[i] === "hour" || parts[i] === "hours") {
+            totalMinutes += parseInt(parts[i - 1]) * 60;
+        } else if (parts[i] === "min" || parts[i] === "mins") {
+            totalMinutes += parseInt(parts[i - 1]);
+        }
     }
 
-    return `${newMinutes} min${newMinutes > 1 ? "s" : ""}`;
+    // Apply ratio and round to nearest minute
+    const newMinutes = Math.round(totalMinutes * ratio);
+
+    // Format back to string
+    if (newMinutes < 60) {
+        return `${newMinutes} mins`;
+    } else {
+        const hours = Math.floor(newMinutes / 60);
+        const minutes = newMinutes % 60;
+        if (minutes === 0) {
+            return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+        } else {
+            return `${hours} ${hours === 1 ? "hour" : "hours"} ${minutes} mins`;
+        }
+    }
 }
 
 /**
- * Calculate combined obstacle cost based on type and severity
+ * Find the closest point on a route to a given point
  */
-export function calculateObstacleCost(obstacle: Marker): number {
-    const typeWeight = OBSTACLE_TYPE_WEIGHTS[
-        obstacle.obstacleType as keyof typeof OBSTACLE_TYPE_WEIGHTS
-    ] || 5;
-    return typeWeight * (obstacle.obstacleScore / 5); // Normalize score to a 0-1 scale
+function findClosestPointOnRoute(point: Point, route: Point[]): Point | null {
+    let closestPoint: Point | null = null;
+    let minDistance = Infinity;
+
+    for (const routePoint of route) {
+        const distance = haversineDistance(point, routePoint);
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestPoint = routePoint;
+        }
+    }
+
+    return closestPoint;
 }

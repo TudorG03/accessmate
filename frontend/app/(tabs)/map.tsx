@@ -123,7 +123,7 @@ export default function MapScreen() {
         );
       } else {
         // Otherwise use standard Google directions
-        directionsResult = await getDirections(originLocation, destination.location);
+        directionsResult = await getDirections(originLocation, destination.location, transportMode);
       }
 
       setRouteCoordinates(directionsResult.points);
@@ -435,7 +435,7 @@ export default function MapScreen() {
                 </View>
                 <View className={`flex-row items-center rounded-lg px-2.5 py-1.5 ${isDark ? 'bg-gray-700' : 'bg-gray-100'}`}>
                   <Ionicons name="time" size={20} color="#F1B24A" />
-                  <Text className={`ml-1.5 font-semibold ${isDark ? 'text-white' : 'text-gray-800'}`}>{routeInfo.duration} min</Text>
+                  <Text className={`ml-1.5 font-semibold ${isDark ? 'text-white' : 'text-gray-800'}`}>{routeInfo.duration}</Text>
                 </View>
               </View>
               <View className="flex-row">

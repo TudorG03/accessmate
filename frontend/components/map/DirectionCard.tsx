@@ -11,6 +11,7 @@ interface DirectionCardProps {
     duration: string;
     stepIndex: number;
     totalSteps: number;
+    isActive?: boolean;
 }
 
 export default function DirectionCard({
@@ -18,7 +19,8 @@ export default function DirectionCard({
     distance,
     duration,
     stepIndex,
-    totalSteps
+    totalSteps,
+    isActive = false
 }: DirectionCardProps) {
     const { isDark } = useTheme();
     const { user } = useAuth();
@@ -34,11 +36,20 @@ export default function DirectionCard({
                 if (distanceStr.toLowerCase().includes('mi')) {
                     return value * 1.60934; // miles to km
                 }
+                // Already in kilometers
+                if (distanceStr.toLowerCase().includes('km')) {
+                    return value;
+                }
+                // Convert feet to kilometers
+                if (distanceStr.toLowerCase().includes('ft')) {
+                    return value * 0.3048 / 1000; // feet to km
+                }
                 // Convert to kilometers if in meters
                 if (distanceStr.toLowerCase().includes('m') && !distanceStr.toLowerCase().includes('km')) {
                     return value / 1000; // meters to km
                 }
-                return value; // Already in km
+                // Default: assume meters
+                return value / 1000;
             }
         } catch (error) {
             console.error('Error parsing distance', error);
@@ -54,10 +65,8 @@ export default function DirectionCard({
         .replace(/<\/b>/g, '');
 
     // Format distance according to user preference
-    const formattedDistance = formatDistance(
-        parseDistance(distance),
-        user?.preferences?.preferedUnit
-    );
+    const parsedDistance = parseDistance(distance);
+    const formattedDistance = formatDistance(parsedDistance, user?.preferences?.preferedUnit);
 
     // Helper function to determine which icon to use based on instruction text
     const getDirectionIcon = (instruction: string) => {
@@ -74,7 +83,14 @@ export default function DirectionCard({
     };
 
     return (
-        <View className={`rounded-xl p-4 shadow-md mb-2 ${isDark ? 'bg-gray-800' : 'bg-white'}`}>
+        <View className={`rounded-xl p-4 shadow-md mb-2 ${isActive
+            ? (isDark
+                ? 'bg-yellow-300 bg-opacity-20 border-2 border-yellow-400'
+                : 'bg-yellow-100 border-2 border-yellow-400')
+            : isDark
+                ? 'bg-gray-800'
+                : 'bg-white'
+            }`}>
             <View className="flex-row items-center">
                 <View className={`w-12 h-12 rounded-full items-center justify-center ${isDark ? 'bg-gray-700' : 'bg-gray-100'}`}>
                     <Ionicons
@@ -88,11 +104,16 @@ export default function DirectionCard({
                         <Text className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                             Step {stepIndex + 1} of {totalSteps}
                         </Text>
-                        <Text className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                        <Text className={`text-xs font-medium ${isActive
+                            ? 'text-yellow-800 font-bold'
+                            : isDark
+                                ? 'text-gray-300'
+                                : 'text-gray-600'
+                            }`}>
                             {formattedDistance} • {duration}
                         </Text>
                     </View>
-                    <Text className={isDark ? 'text-white' : 'text-gray-800'}>
+                    <Text className={isActive ? 'font-bold text-yellow-900' : isDark ? 'text-white' : 'text-gray-800'}>
                         {cleanInstruction}
                     </Text>
                 </View>

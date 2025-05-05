@@ -109,11 +109,13 @@ export async function getPlaceDetails(placeId: string): Promise<PlaceDetails> {
  * Get directions between two locations
  * @param origin Starting location coordinates
  * @param destination Ending location coordinates
+ * @param transportMode 'walking' | 'driving' (default: 'walking')
  * @returns Array of coordinate points for the route
  */
 export async function getDirections(
     origin: { latitude: number; longitude: number },
     destination: { latitude: number; longitude: number },
+    transportMode: "walking" | "driving" = "walking",
 ): Promise<
     {
         points: Array<{ latitude: number; longitude: number }>;
@@ -128,70 +130,76 @@ export async function getDirections(
         }>;
     }
 > {
-    try {
-        // Use the Directions API key
-        const DIRECTIONS_API_KEY =
-            Constants.expoConfig?.extra?.googleMapsDirectionsApiKey || "";
+    // Use the Directions API key
+    const DIRECTIONS_API_KEY =
+        Constants.expoConfig?.extra?.googleMapsDirectionsApiKey || "";
 
-        if (!DIRECTIONS_API_KEY) {
-            console.warn("Google Maps Directions API key is not configured");
-            return useMockDirections(origin, destination);
-        }
-
-        const response = await fetch(
-            `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&key=${DIRECTIONS_API_KEY}`,
-        );
-
-        if (!response.ok) {
-            throw new Error(`Directions API error: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        if (data.status !== "OK") {
-            console.warn("Directions API returned status:", data.status);
-            return useMockDirections(origin, destination);
-        }
-
-        // Parse the route from the response
-        const route = data.routes[0];
-        const leg = route.legs[0];
-
-        // Extract steps with instructions
-        const steps = leg.steps.map((step: any) => ({
-            instructions: step.html_instructions,
-            distance: step.distance.text,
-            duration: step.duration.text,
-            startLocation: {
-                latitude: step.start_location.lat,
-                longitude: step.start_location.lng,
-            },
-            endLocation: {
-                latitude: step.end_location.lat,
-                longitude: step.end_location.lng,
-            },
-        }));
-
-        // Decode the polyline to get route points
-        const points = decodePolyline(route.overview_polyline.points).map(
-            ([lat, lng]) => ({ latitude: lat, longitude: lng }),
-        );
-
-        // Extract distance in kilometers
-        // Google Maps API returns distance in meters
-        const distanceInKm = leg.distance.value / 1000;
-
-        return {
-            points,
-            distance: distanceInKm,
-            duration: leg.duration.text,
-            steps,
-        };
-    } catch (error) {
-        console.error("Error getting directions:", error);
-        // Fallback to mock data on error
-        return useMockDirections(origin, destination);
+    if (!DIRECTIONS_API_KEY) {
+        throw new Error("Google Maps Directions API key is not configured");
     }
+
+    console.log(`Getting directions with transport mode: ${transportMode}`);
+
+    const apiUrl =
+        `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&mode=${transportMode}&key=${DIRECTIONS_API_KEY}`;
+    console.log(
+        `API URL (without key): ${
+            apiUrl.replace(DIRECTIONS_API_KEY, "API_KEY")
+        }`,
+    );
+
+    const response = await fetch(apiUrl);
+
+    if (!response.ok) {
+        throw new Error(`Directions API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (data.status !== "OK") {
+        throw new Error(`Directions API returned status: ${data.status}`);
+    }
+
+    // Parse the route from the response
+    const route = data.routes[0];
+    const leg = route.legs[0];
+
+    // Extract steps with instructions
+    const steps = leg.steps.map((step: any) => ({
+        instructions: step.html_instructions,
+        distance: step.distance.text,
+        duration: step.duration.text,
+        startLocation: {
+            latitude: step.start_location.lat,
+            longitude: step.start_location.lng,
+        },
+        endLocation: {
+            latitude: step.end_location.lat,
+            longitude: step.end_location.lng,
+        },
+    }));
+
+    // Decode the polyline to get route points
+    const points = decodePolyline(route.overview_polyline.points).map(
+        ([lat, lng]) => ({ latitude: lat, longitude: lng }),
+    );
+
+    // Extract distance in kilometers
+    // Google Maps API returns distance in meters
+    const distanceInKm = leg.distance.value / 1000;
+
+    console.log(
+        `Directions result: ${points.length} points, ${
+            distanceInKm.toFixed(2)
+        } km, mode=${transportMode}`,
+    );
+
+    return {
+        points,
+        distance: distanceInKm,
+        duration: leg.duration.text,
+        steps,
+    };
 }
 
 // Helper function to decode Google's polyline format
@@ -280,85 +288,4 @@ function useMockPlaceDetails(placeId: string): PlaceDetails {
             },
         };
     }
-}
-
-function useMockDirections(
-    origin: { latitude: number; longitude: number },
-    destination: { latitude: number; longitude: number },
-): {
-    points: Array<{ latitude: number; longitude: number }>;
-    distance: number;
-    duration: string;
-    steps: Array<{
-        instructions: string;
-        distance: string;
-        duration: string;
-        startLocation: { latitude: number; longitude: number };
-        endLocation: { latitude: number; longitude: number };
-    }>;
-} {
-    // Generate a straight line path
-    const points = [];
-    const steps = 20;
-    for (let i = 0; i <= steps; i++) {
-        const ratio = i / steps;
-        points.push({
-            latitude: origin.latitude +
-                (destination.latitude - origin.latitude) * ratio,
-            longitude: origin.longitude +
-                (destination.longitude - origin.longitude) * ratio,
-        });
-    }
-
-    // Generate mock steps
-    const mockSteps = [
-        {
-            instructions: "Head <b>north</b> on <b>Main St</b>",
-            distance: "1.2 km",
-            duration: "5 mins",
-            startLocation: origin,
-            endLocation: {
-                latitude: origin.latitude +
-                    (destination.latitude - origin.latitude) * 0.3,
-                longitude: origin.longitude +
-                    (destination.longitude - origin.longitude) * 0.3,
-            },
-        },
-        {
-            instructions: "Turn <b>right</b> onto <b>First Ave</b>",
-            distance: "2.5 km",
-            duration: "6 mins",
-            startLocation: {
-                latitude: origin.latitude +
-                    (destination.latitude - origin.latitude) * 0.3,
-                longitude: origin.longitude +
-                    (destination.longitude - origin.longitude) * 0.3,
-            },
-            endLocation: {
-                latitude: origin.latitude +
-                    (destination.latitude - origin.latitude) * 0.7,
-                longitude: origin.longitude +
-                    (destination.longitude - origin.longitude) * 0.7,
-            },
-        },
-        {
-            instructions: "Your destination will be on the <b>left</b>",
-            distance: "1.5 km",
-            duration: "4 mins",
-            startLocation: {
-                latitude: origin.latitude +
-                    (destination.latitude - origin.latitude) * 0.7,
-                longitude: origin.longitude +
-                    (destination.longitude - origin.longitude) * 0.7,
-            },
-            endLocation: destination,
-        },
-    ];
-
-    return {
-        points,
-        distance: 5.2, // Mock distance in kilometers
-        duration: "15 mins",
-        steps: mockSteps,
-    };
 }

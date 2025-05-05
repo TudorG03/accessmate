@@ -11,6 +11,7 @@ import {
   UserRole,
 } from "@/types/auth.types";
 import { AuthService } from "./auth.service";
+import { getAccessToken, setAccessToken } from "./auth.token";
 
 const storage = new MMKV();
 
@@ -66,6 +67,7 @@ export const useAuthStore = create<AuthState>()(
             preferences,
           );
 
+          setAccessToken(data.accessToken);
           set({
             isAuthenticated: true,
             accessToken: data.accessToken,
@@ -106,6 +108,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const data = await AuthService.login(email, password);
 
+          setAccessToken(data.accessToken);
           set({
             isAuthenticated: true,
             accessToken: data.accessToken,
@@ -142,7 +145,7 @@ export const useAuthStore = create<AuthState>()(
       logout: async () => {
         set({ isLoading: true, error: null });
         try {
-          const { accessToken } = get();
+          const accessToken = getAccessToken();
 
           if (accessToken) {
             await AuthService.logout(accessToken);
@@ -150,6 +153,7 @@ export const useAuthStore = create<AuthState>()(
             throw new Error("Logout failed");
           }
 
+          setAccessToken(null);
           set({
             isAuthenticated: false,
             accessToken: null,
@@ -159,6 +163,7 @@ export const useAuthStore = create<AuthState>()(
           router.navigate("/");
         } catch (error) {
           console.error("Logout error:", error);
+          setAccessToken(null);
           set({
             isAuthenticated: false,
             accessToken: null,
@@ -175,6 +180,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const data = await AuthService.refreshToken();
 
+          setAccessToken(data.accessToken);
           set({
             accessToken: data.accessToken,
             isAuthenticated: true,
@@ -182,6 +188,7 @@ export const useAuthStore = create<AuthState>()(
           return true;
         } catch (error) {
           console.error("Refresh token error:", error);
+          setAccessToken(null);
           set({
             isAuthenticated: false,
             accessToken: null,
@@ -194,7 +201,7 @@ export const useAuthStore = create<AuthState>()(
       updateUser: async (userId, userData) => {
         set({ isLoading: true, error: null });
         try {
-          const { accessToken } = get();
+          const accessToken = getAccessToken();
 
           if (accessToken) {
             const data = await AuthService.updateUser(
@@ -202,11 +209,9 @@ export const useAuthStore = create<AuthState>()(
               userId,
               userData,
             );
-            set({
-              user: data.user,
-            });
+            set({ user: data.user });
           } else {
-            throw new Error("Can't update user");
+            throw new Error("No access token");
           }
         } catch (error) {
           set({

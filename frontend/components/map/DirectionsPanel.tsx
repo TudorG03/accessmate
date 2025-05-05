@@ -75,38 +75,17 @@ export default function DirectionsPanel({
             </View>
 
             <ScrollView className="p-2">
-                <DirectionCard
-                    instruction={currentStep.instructions}
-                    distance={currentStep.distance}
-                    duration={currentStep.duration}
-                    stepIndex={activeStepIndex}
-                    totalSteps={steps.length}
-                />
-
-                {nextStep && (
-                    <View className={`items-center my-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                        <Ionicons name="arrow-down" size={20} color={isDark ? "#888888" : "#999999"} />
-                        <Text className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Then</Text>
-                    </View>
-                )}
-
-                {nextStep && (
+                {steps.map((step, idx) => (
                     <DirectionCard
-                        instruction={nextStep.instructions}
-                        distance={nextStep.distance}
-                        duration={nextStep.duration}
-                        stepIndex={activeStepIndex + 1}
+                        key={idx}
+                        instruction={step.instructions}
+                        distance={step.distance}
+                        duration={step.duration}
+                        stepIndex={idx}
                         totalSteps={steps.length}
+                        isActive={idx === activeStepIndex}
                     />
-                )}
-
-                {activeStepIndex < steps.length - 2 && (
-                    <View className="items-center mt-4">
-                        <Text className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                            {steps.length - activeStepIndex - 2} more steps to destination
-                        </Text>
-                    </View>
-                )}
+                ))}
             </ScrollView>
         </View>
     );
@@ -126,4 +105,4 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
     return R * c; // Distance in meters
-} 
+}

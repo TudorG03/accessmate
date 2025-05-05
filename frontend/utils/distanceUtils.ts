@@ -16,6 +16,11 @@ export function formatDistance(
         const distanceInMiles = distanceInKm * 0.621371;
         return `${distanceInMiles.toFixed(1)} mi`;
     } else {
+        // For metric system, show meters if distance is less than 1km
+        if (distanceInKm < 1) {
+            const distanceInMeters = Math.round(distanceInKm * 1000);
+            return `${distanceInMeters} m`;
+        }
         return `${distanceInKm.toFixed(1)} km`;
     }
 }
