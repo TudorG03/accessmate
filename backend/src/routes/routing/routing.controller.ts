@@ -24,7 +24,6 @@ export async function findAccessibleRoute(ctx: Context) {
       destination,
       avoidObstacles,
       userPreferences,
-      useOsmRouting = true,
     } = body;
 
     // Validate input
@@ -51,38 +50,29 @@ export async function findAccessibleRoute(ctx: Context) {
       return;
     }
 
-    // Get the route, first trying OSM grid-based routing if requested
+    // For accessible routing, always try OSM grid-based routing first
     let routeResult;
-    if (useOsmRouting) {
-      try {
-        console.log("Attempting OSM grid-based routing...");
-        routeResult = await graphService.findOsmBasedAccessibleRoute({
-          origin,
-          destination,
-          avoidObstacles: avoidObstacles !== false, // Default to true
-          userPreferences,
-        });
-        console.log("OSM grid-based routing succeeded");
-      } catch (osmError) {
-        console.error(
-          "OSM grid-based routing failed, falling back to Google:",
-          osmError,
-        );
-        routeResult = await graphService.findAccessibleRoute({
-          origin,
-          destination,
-          avoidObstacles: avoidObstacles !== false, // Default to true
-          userPreferences,
-        });
-      }
-    } else {
-      console.log("Using Google-based routing as requested");
+    try {
+      console.log("Attempting OSM grid-based routing...");
+      routeResult = await graphService.findOsmBasedAccessibleRoute({
+        origin,
+        destination,
+        avoidObstacles: avoidObstacles !== false, // Default to true
+        userPreferences,
+      });
+      console.log("OSM grid-based routing succeeded");
+    } catch (osmError) {
+      console.error(
+        "OSM grid-based routing failed, falling back to Google Directions API:",
+        osmError,
+      );
       routeResult = await graphService.findAccessibleRoute({
         origin,
         destination,
         avoidObstacles: avoidObstacles !== false, // Default to true
         userPreferences,
       });
+      console.log("Google Directions API fallback succeeded");
     }
 
     // Ensure the result has the expected structure

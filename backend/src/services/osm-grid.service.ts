@@ -1018,7 +1018,7 @@ export async function findOsmGridRoute(
   origin: Point,
   destination: Point,
   obstacles: Obstacle[] = [],
-  cellSize: number = 2, // Further reduced from 3m to 2m for maximum precision
+  cellSize: number = 1, // Ultra-fine 1m grid for maximum precision
   bufferKm: number = 1.0, // 1km buffer around the route
 ): Promise<Point[]> {
   try {
@@ -1044,17 +1044,19 @@ export async function findOsmGridRoute(
       destination.longitude,
     );
 
-    // Adaptive cell size based on route length
-    const adaptiveCellSize = routeDistance < 500
-      ? 2
+    // Ultra-fine adaptive cell size based on route length
+    const adaptiveCellSize = routeDistance < 300
+      ? 1
+      : routeDistance < 500
+      ? 1.5
       : routeDistance < 1000
-      ? 3
+      ? 2
       : routeDistance < 2000
-      ? 4
-      : 5;
+      ? 3
+      : 4;
 
     console.log(
-      `Using adaptive cell size of ${adaptiveCellSize}m for ${
+      `Using ultra-fine adaptive cell size of ${adaptiveCellSize}m for ${
         routeDistance.toFixed(1)
       }m route`,
     );
@@ -1062,15 +1064,15 @@ export async function findOsmGridRoute(
     // 3. Create grid with adaptive cell size
     const grid = createGrid(bbox, adaptiveCellSize);
 
-    // 4. Map roads to grid
+    // 4. Map roads to grid with extra precision
     mapRoadsToGrid(osmData, grid);
 
     // 5. Apply obstacles
     applyObstaclesToGrid(grid, obstacles);
 
-    // 6. Find nearest road cells to origin and destination
-    const startCell = findNearestRoadCell(grid, origin);
-    const endCell = findNearestRoadCell(grid, destination);
+    // 6. Find nearest road cells to origin and destination with improved precision
+    const startCell = findExactNearestRoadCell(grid, origin, osmData);
+    const endCell = findExactNearestRoadCell(grid, destination, osmData);
 
     if (!startCell || !endCell) {
       console.warn("Could not find road cells near origin or destination");
@@ -1099,15 +1101,134 @@ export async function findOsmGridRoute(
     // 10. Apply advanced path refinement by mapping to actual road geometry
     const refinedPath = refinePathWithActualRoads(postProcessedPath, osmData);
 
-    // 11. Apply a final spline interpolation pass for ultra-smooth curves
-    const finalPath = applySplineInterpolation(refinedPath);
+    // 11. Apply spline interpolation for smooth curves
+    const splinedPath = applySplineInterpolation(refinedPath);
 
-    console.log(`Final path has ${finalPath.length} points`);
+    // 12. Final ultra-precise path with exact node matching
+    const finalPath = performFinalPathRefinement(
+      splinedPath,
+      osmData,
+      origin,
+      destination,
+    );
+
+    console.log(`Final ultra-precise path has ${finalPath.length} points`);
     return finalPath;
   } catch (error) {
     console.error("Error in OSM grid routing:", error);
     return createStraightLinePath(origin, destination);
   }
+}
+
+/**
+ * Find exact nearest road cell with precise node matching
+ */
+function findExactNearestRoadCell(
+  grid: Grid,
+  point: Point,
+  osmData: OsmData,
+): GridCell | null {
+  // First try to find the closest OSM node directly
+  const nearestNode = findNearbyOsmNode(point, osmData, 50);
+
+  if (nearestNode) {
+    // Found a close OSM node, now find the grid cell containing this node
+    const { x, y } = getGridCoordinates(nearestNode.lat, nearestNode.lon, grid);
+
+    // Check if the coordinates are valid and the cell is a road
+    if (
+      x >= 0 && x <= grid.maxX && y >= 0 && y <= grid.maxY &&
+      grid.cells[y][x].isRoad
+    ) {
+      return grid.cells[y][x];
+    }
+
+    // If the exact cell isn't a road, search surrounding cells
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+
+        if (
+          nx >= 0 && nx <= grid.maxX && ny >= 0 && ny <= grid.maxY &&
+          grid.cells[ny][nx].isRoad
+        ) {
+          return grid.cells[ny][nx];
+        }
+      }
+    }
+  }
+
+  // Fall back to the original method if no node found
+  return findNearestRoadCell(grid, point);
+}
+
+/**
+ * Final precision refinement of the path
+ */
+function performFinalPathRefinement(
+  path: Point[],
+  osmData: OsmData,
+  origin: Point,
+  destination: Point,
+): Point[] {
+  if (path.length < 2) return path;
+
+  // Make a deep copy of the path
+  const refinedPath = [...path];
+
+  // Special handling for the start and end points - replace with exact origin/destination
+  refinedPath[0] = origin;
+  refinedPath[refinedPath.length - 1] = destination;
+
+  // For each point in the path (except first and last)
+  for (let i = 1; i < refinedPath.length - 1; i++) {
+    const point = refinedPath[i];
+
+    // Find the nearest OSM node with a very tight radius (5 meters)
+    const exactNode = findNearbyOsmNode(point, osmData, 5);
+
+    if (exactNode) {
+      // Replace with exact OSM node position
+      refinedPath[i] = {
+        latitude: exactNode.lat,
+        longitude: exactNode.lon,
+      };
+    }
+  }
+
+  // Ensure points are not too close to each other
+  return removeDuplicatePoints(refinedPath);
+}
+
+/**
+ * Remove duplicate or very close points
+ */
+function removeDuplicatePoints(path: Point[]): Point[] {
+  if (path.length <= 2) return path;
+
+  const result: Point[] = [path[0]];
+  const MIN_DISTANCE = 1; // minimum distance in meters
+
+  for (let i = 1; i < path.length; i++) {
+    const prev = result[result.length - 1];
+    const curr = path[i];
+
+    // Calculate distance
+    const distance = haversineDistanceInMeters(
+      prev.latitude,
+      prev.longitude,
+      curr.latitude,
+      curr.longitude,
+    );
+
+    // Only add if not too close, except for the last point
+    if (distance >= MIN_DISTANCE || i === path.length - 1) {
+      result.push(curr);
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -1476,62 +1597,132 @@ function createStraightLinePath(origin: Point, destination: Point): Point[] {
 
 /**
  * Find actual road geometry between two points by identifying the closest way
- * and extracting the relevant segment of that way
+ * and extracting the relevant segment of that way with ultra-high precision
  */
 function findActualRoadBetweenPoints(
   start: Point,
   end: Point,
   osmData: OsmData,
-  maxDistanceMeters: number = 30, // Maximum distance to consider a way as relevant
+  maxDistanceMeters: number = 15, // Reduced from 30m to 15m for higher precision
 ): Point[] | null {
-  // First, find the closest way to both points
-  const closestWay = findClosestWay(start, end, osmData, maxDistanceMeters);
+  // First, find OSM ways that contain both points nearby
+  const candidateWays = findCandidateWays(
+    start,
+    end,
+    osmData,
+    maxDistanceMeters,
+  );
 
-  if (!closestWay) return null;
+  if (candidateWays.length === 0) return null;
 
-  // Get the nodes for this way
-  const wayNodes = closestWay.nodes
-    .map((nodeId) => osmData.nodes[nodeId])
-    .filter((node) => node !== undefined);
+  // Sort ways by relevance (pedestrian ways first, then by distance)
+  const sortedWays = sortWaysByRelevance(candidateWays, start, end, osmData);
 
-  if (wayNodes.length < 2) return null;
+  // Try each way until we find a valid path
+  for (const way of sortedWays) {
+    // Get the nodes for this way
+    const wayNodes = way.nodes
+      .map((nodeId) => osmData.nodes[nodeId])
+      .filter((node) => node !== undefined);
 
-  // Find the closest nodes on the way to our start and end points
-  const startNodeIndex = findClosestNodeIndex(start, wayNodes);
-  const endNodeIndex = findClosestNodeIndex(end, wayNodes);
+    if (wayNodes.length < 2) continue;
 
-  if (startNodeIndex === -1 || endNodeIndex === -1) return null;
+    // Find the sections of the way closest to our start and end points with ultra precision
+    const startInfo = findClosestPointOnWay(start, wayNodes);
+    const endInfo = findClosestPointOnWay(end, wayNodes);
 
-  // Order matters - we need to extract the segment in the correct direction
-  const [fromIndex, toIndex] = startNodeIndex <= endNodeIndex
-    ? [startNodeIndex, endNodeIndex]
-    : [endNodeIndex, startNodeIndex];
+    if (!startInfo || !endInfo) continue;
 
-  // Extract the road segment between these nodes
-  const segment = wayNodes.slice(fromIndex, toIndex + 1).map((node) => ({
-    latitude: node.lat,
-    longitude: node.lon,
-  }));
+    // Extract the relevant segment
+    let segment: Point[] = [];
 
-  // If we're going in reverse direction, reverse the segment
-  if (startNodeIndex > endNodeIndex) {
-    segment.reverse();
+    // If both points project onto the same segment
+    if (startInfo.segmentIndex === endInfo.segmentIndex) {
+      // Create interpolated points along this single segment
+      const node1 = wayNodes[startInfo.segmentIndex];
+      const node2 = wayNodes[startInfo.segmentIndex + 1];
+
+      // Insert exact projection points
+      segment = createPreciseSegment(
+        node1,
+        node2,
+        startInfo.projection,
+        endInfo.projection,
+        10, // Higher density of points
+      );
+    } else {
+      // Handle multi-segment path
+
+      // Add the start projection point
+      segment.push(startInfo.projection);
+
+      // Add inner nodes
+      const startIdx = startInfo.segmentIndex + 1;
+      const endIdx = endInfo.segmentIndex;
+
+      // If there are intermediate nodes
+      if (startIdx <= endIdx) {
+        for (let i = startIdx; i <= endIdx; i++) {
+          segment.push({
+            latitude: wayNodes[i].lat,
+            longitude: wayNodes[i].lon,
+          });
+        }
+      }
+
+      // Add the end projection point
+      segment.push(endInfo.projection);
+    }
+
+    // Success if we have points
+    if (segment.length > 0) {
+      return segment;
+    }
   }
 
+  // No valid path found
+  return null;
+}
+
+/**
+ * Create a precise segment between two nodes with projections
+ */
+function createPreciseSegment(
+  node1: OsmNode,
+  node2: OsmNode,
+  startProj: Point,
+  endProj: Point,
+  numPoints: number,
+): Point[] {
+  const segment: Point[] = [startProj];
+
+  // Use linear interpolation with high density
+  for (let i = 1; i < numPoints - 1; i++) {
+    const t = i / numPoints;
+
+    // Calculate position along segment
+    segment.push({
+      latitude: startProj.latitude +
+        t * (endProj.latitude - startProj.latitude),
+      longitude: startProj.longitude +
+        t * (endProj.longitude - startProj.longitude),
+    });
+  }
+
+  segment.push(endProj);
   return segment;
 }
 
 /**
- * Find the closest way to both the start and end points
+ * Find candidate ways for path
  */
-function findClosestWay(
+function findCandidateWays(
   start: Point,
   end: Point,
   osmData: OsmData,
   maxDistanceMeters: number,
-): OsmWay | null {
-  let closestWay: OsmWay | null = null;
-  let minAverageDistance = Infinity;
+): OsmWay[] {
+  const candidates: OsmWay[] = [];
 
   for (const way of (osmData.ways || [])) {
     // Skip ways with fewer than 2 nodes
@@ -1544,54 +1735,128 @@ function findClosestWay(
 
     if (nodes.length < 2) continue;
 
-    // Calculate minimum distance from start and end points to this way
+    // Calculate distances to start and end points
     const startDistance = minDistanceToWay(start, nodes);
     const endDistance = minDistanceToWay(end, nodes);
 
-    // Calculate average distance
-    const avgDistance = (startDistance + endDistance) / 2;
-
-    // Update closest way if this one is closer
-    if (avgDistance < minAverageDistance && avgDistance <= maxDistanceMeters) {
-      minAverageDistance = avgDistance;
-      closestWay = way;
+    // If both points are close to this way, add it as candidate
+    if (
+      startDistance <= maxDistanceMeters && endDistance <= maxDistanceMeters
+    ) {
+      candidates.push(way);
     }
   }
 
-  return closestWay;
+  return candidates;
 }
 
 /**
- * Calculate minimum distance from a point to any segment of a way
+ * Sort ways by relevance for pedestrian routing
  */
-function minDistanceToWay(point: Point, nodes: OsmNode[]): number {
+function sortWaysByRelevance(
+  ways: OsmWay[],
+  start: Point,
+  end: Point,
+  osmData: OsmData,
+): OsmWay[] {
+  // Define priority for road types (lower number = higher priority)
+  const typePriority: { [key: string]: number } = {
+    "footway": 1,
+    "path": 2,
+    "pedestrian": 3,
+    "steps": 4,
+    "cycleway": 5,
+    "residential": 6,
+    "service": 7,
+    "unclassified": 8,
+    "tertiary": 9,
+    "secondary": 10,
+    "primary": 11,
+    "trunk": 12,
+    "motorway": 13,
+  };
+
+  return [...ways].sort((a, b) => {
+    // First check highway type
+    const typeA = a.tags.highway || "";
+    const typeB = b.tags.highway || "";
+
+    const priorityA = typePriority[typeA] || 100;
+    const priorityB = typePriority[typeB] || 100;
+
+    if (priorityA !== priorityB) {
+      return priorityA - priorityB;
+    }
+
+    // If same type, compare average distance
+    const nodesA = a.nodes.map((id) => osmData.nodes[id]).filter((n) => n);
+    const nodesB = b.nodes.map((id) => osmData.nodes[id]).filter((n) => n);
+
+    const distA =
+      (minDistanceToWay(start, nodesA) + minDistanceToWay(end, nodesA)) / 2;
+    const distB =
+      (minDistanceToWay(start, nodesB) + minDistanceToWay(end, nodesB)) / 2;
+
+    return distA - distB;
+  });
+}
+
+/**
+ * Find the closest point on a way to a given point with precise projection
+ */
+function findClosestPointOnWay(point: Point, nodes: OsmNode[]): {
+  segmentIndex: number;
+  projection: Point;
+  distance: number;
+} | null {
+  if (nodes.length < 2) return null;
+
+  let closestSegmentIndex = 0;
+  let closestProjection: Point = {
+    latitude: nodes[0].lat,
+    longitude: nodes[0].lon,
+  };
   let minDistance = Infinity;
 
+  // Check each segment
   for (let i = 0; i < nodes.length - 1; i++) {
     const node1 = nodes[i];
     const node2 = nodes[i + 1];
 
-    // Calculate distance from point to this segment
-    const distance = distanceToSegment(
-      point,
-      { latitude: node1.lat, longitude: node1.lon },
-      { latitude: node2.lat, longitude: node2.lon },
+    const n1Point = { latitude: node1.lat, longitude: node1.lon };
+    const n2Point = { latitude: node2.lat, longitude: node2.lon };
+
+    // Calculate projection and distance to segment
+    const projection = projectPointOnSegment(point, n1Point, n2Point);
+    const distance = haversineDistanceInMeters(
+      point.latitude,
+      point.longitude,
+      projection.latitude,
+      projection.longitude,
     );
 
-    minDistance = Math.min(minDistance, distance);
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestSegmentIndex = i;
+      closestProjection = projection;
+    }
   }
 
-  return minDistance;
+  return {
+    segmentIndex: closestSegmentIndex,
+    projection: closestProjection,
+    distance: minDistance,
+  };
 }
 
 /**
- * Calculate distance from a point to a line segment
+ * Project a point onto a line segment
  */
-function distanceToSegment(
+function projectPointOnSegment(
   point: Point,
   segmentStart: Point,
   segmentEnd: Point,
-): number {
+): Point {
   // Convert to flat coordinates for simplicity (approximation at small scales)
   const x = point.longitude;
   const y = point.latitude;
@@ -1607,12 +1872,7 @@ function distanceToSegment(
 
   if (lineLengthSq === 0) {
     // Line segment is actually a point
-    return haversineDistanceInMeters(
-      point.latitude,
-      point.longitude,
-      segmentStart.latitude,
-      segmentStart.longitude,
-    );
+    return segmentStart;
   }
 
   // Calculate projection of point onto line
@@ -1620,66 +1880,19 @@ function distanceToSegment(
 
   if (t < 0) {
     // Point projects outside the line segment (beyond segmentStart)
-    return haversineDistanceInMeters(
-      point.latitude,
-      point.longitude,
-      segmentStart.latitude,
-      segmentStart.longitude,
-    );
+    return segmentStart;
   }
 
   if (t > 1) {
     // Point projects outside the line segment (beyond segmentEnd)
-    return haversineDistanceInMeters(
-      point.latitude,
-      point.longitude,
-      segmentEnd.latitude,
-      segmentEnd.longitude,
-    );
+    return segmentEnd;
   }
 
-  // Point projects onto the line segment
-  const projX = x1 + t * dx;
-  const projY = y1 + t * dy;
-
-  // Return distance to projected point
-  return haversineDistanceInMeters(
-    point.latitude,
-    point.longitude,
-    projY,
-    projX,
-  );
-}
-
-/**
- * Find the index of the closest node in a list to a given point
- */
-function findClosestNodeIndex(point: Point, nodes: OsmNode[]): number {
-  if (nodes.length === 0) return -1;
-
-  let closestIndex = 0;
-  let minDistance = haversineDistanceInMeters(
-    point.latitude,
-    point.longitude,
-    nodes[0].lat,
-    nodes[0].lon,
-  );
-
-  for (let i = 1; i < nodes.length; i++) {
-    const distance = haversineDistanceInMeters(
-      point.latitude,
-      point.longitude,
-      nodes[i].lat,
-      nodes[i].lon,
-    );
-
-    if (distance < minDistance) {
-      minDistance = distance;
-      closestIndex = i;
-    }
-  }
-
-  return closestIndex;
+  // Point projects onto the line segment - calculate exact projection point
+  return {
+    latitude: y1 + t * dy,
+    longitude: x1 + t * dx,
+  };
 }
 
 /**
@@ -1774,7 +1987,7 @@ function createCatmullRomSpline(
     );
   }
 
-  // Generate the spline points
+  // Generate the spline points with greater precision
   for (let i = 0; i <= segments; i++) {
     const t = i / segments;
 
@@ -1800,6 +2013,36 @@ function createCatmullRomSpline(
   }
 
   return points;
+}
+
+/**
+ * Calculate minimum distance from a point to any segment of a way
+ */
+function minDistanceToWay(point: Point, nodes: OsmNode[]): number {
+  let minDistance = Infinity;
+  
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const node1 = nodes[i];
+    const node2 = nodes[i + 1];
+    
+    // Calculate distance from point to this segment
+    const p1 = { latitude: node1.lat, longitude: node1.lon };
+    const p2 = { latitude: node2.lat, longitude: node2.lon };
+    
+    const projPoint = projectPointOnSegment(point, p1, p2);
+    
+    // Calculate the haversine distance to the projection
+    const distance = haversineDistanceInMeters(
+      point.latitude, 
+      point.longitude, 
+      projPoint.latitude, 
+      projPoint.longitude
+    );
+    
+    minDistance = Math.min(minDistance, distance);
+  }
+  
+  return minDistance;
 }
 
 export default {

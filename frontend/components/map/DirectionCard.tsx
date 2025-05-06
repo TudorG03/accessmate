@@ -85,7 +85,7 @@ export default function DirectionCard({
     return (
         <View className={`rounded-xl p-4 shadow-md mb-2 ${isActive
             ? (isDark
-                ? 'bg-yellow-300 bg-opacity-20 border-2 border-yellow-400'
+                ? 'bg-[#F1B24A] border-2 border-yellow-100'
                 : 'bg-yellow-100 border-2 border-yellow-400')
             : isDark
                 ? 'bg-gray-800'
@@ -101,11 +101,13 @@ export default function DirectionCard({
                 </View>
                 <View className="flex-1 ml-4">
                     <View className="flex-row justify-between items-center mb-1">
-                        <Text className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <Text className={`text-xs ${isDark ? 'text-gray-800' : 'text-gray-600'}`}>
                             Step {stepIndex + 1} of {totalSteps}
                         </Text>
                         <Text className={`text-xs font-medium ${isActive
-                            ? 'text-yellow-800 font-bold'
+                            ? isDark
+                                ? 'text-white font-bold'
+                                : 'text-yellow-800 font-bold'
                             : isDark
                                 ? 'text-gray-300'
                                 : 'text-gray-600'
@@ -113,7 +115,13 @@ export default function DirectionCard({
                             {formattedDistance} • {duration}
                         </Text>
                     </View>
-                    <Text className={isActive ? 'font-bold text-yellow-900' : isDark ? 'text-white' : 'text-gray-800'}>
+                    <Text className={isActive
+                        ? isDark
+                            ? 'font-bold text-white'
+                            : 'font-bold text-yellow-900'
+                        : isDark
+                            ? 'text-white'
+                            : 'text-gray-800'}>
                         {cleanInstruction}
                     </Text>
                 </View>

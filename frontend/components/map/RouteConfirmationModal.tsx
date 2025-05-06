@@ -13,8 +13,7 @@ interface RouteConfirmationModalProps {
     onConfirm: (
         transportMode: 'walking' | 'driving',
         destination: any,
-        useAccessibleRoute: boolean,
-        useOsmRouting: boolean
+        useAccessibleRoute: boolean
     ) => void;
     placeId: string | null;
     originLocation: { latitude: number, longitude: number } | null;
@@ -33,7 +32,6 @@ export default function RouteConfirmationModal({
     const [routeInfo, setRouteInfo] = useState<{ distance: number, duration: string } | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [useAccessibleRoute, setUseAccessibleRoute] = useState(true);
-    const [useOsmRouting, setUseOsmRouting] = useState(true);
 
     const { isDark, colors } = useTheme();
     const { markers } = useMarker();
@@ -109,8 +107,7 @@ export default function RouteConfirmationModal({
                         longitude: placeDetails.geometry.location.lng
                     }
                 },
-                useAccessibleRoute,
-                useOsmRouting
+                useAccessibleRoute
             );
         }
     }
@@ -232,33 +229,9 @@ export default function RouteConfirmationModal({
 
                                     <Text className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                                         {useAccessibleRoute
-                                            ? 'Routes will be optimized to avoid obstacles and barriers.'
-                                            : 'Standard route without accessibility optimizations.'}
+                                            ? 'Routes will be optimized to avoid obstacles and barriers using OpenStreetMap data for more accurate walkways.'
+                                            : 'Standard Google Maps route without accessibility optimizations.'}
                                     </Text>
-
-                                    {useAccessibleRoute && (
-                                        <View className="mt-4">
-                                            <View className="flex-row justify-between items-center mb-2">
-                                                <View className="flex-row items-center">
-                                                    <Ionicons name="map" size={22} color="#F1B24A" />
-                                                    <Text className={`ml-2 font-semibold ${isDark ? 'text-white' : 'text-gray-800'}`}>
-                                                        OSM Road Networks
-                                                    </Text>
-                                                </View>
-                                                <Switch
-                                                    value={useOsmRouting}
-                                                    onValueChange={setUseOsmRouting}
-                                                    trackColor={{ false: isDark ? '#4b5563' : '#d1d5db', true: '#F1B24A' }}
-                                                    thumbColor={isDark ? '#e5e7eb' : '#ffffff'}
-                                                />
-                                            </View>
-                                            <Text className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                                                {useOsmRouting
-                                                    ? 'Uses OpenStreetMap data for more accurate walkways.'
-                                                    : 'Uses Google Maps for default routing.'}
-                                            </Text>
-                                        </View>
-                                    )}
                                 </View>
                             )}
 

@@ -135,8 +135,7 @@ export default function MapScreen() {
       address: string,
       location: { latitude: number, longitude: number }
     },
-    useAccessibleRouting: boolean = true,
-    useOsmRouting: boolean = true
+    useAccessibleRouting: boolean = true
   ) => {
     if (!location) {
       console.error("Cannot start navigation: User location is not available");
@@ -154,7 +153,6 @@ export default function MapScreen() {
 
       console.log(`Starting navigation to ${destination.name} using ${transportMode} mode`);
       console.log(`Accessible routing: ${useAccessibleRouting ? 'Enabled' : 'Disabled'}`);
-      console.log(`OSM routing: ${useOsmRouting ? 'Enabled' : 'Disabled'}`);
 
       // Get directions from current location to destination
       const originLocation = {
@@ -182,51 +180,33 @@ export default function MapScreen() {
             maxSlope: 0.08, // 8% maximum grade
             minimumWidth: 1.2 // 1.2 meters minimum width
           },
-          useOsmRouting: useOsmRouting // Use OSM-based routing which provides better road adherence
+          useOsmRouting: true // Always use OSM-based routing by default
         };
 
         // Call the backend API for accessible routing
         try {
-          console.log("Using backend accessible routing service");
+          console.log("Using backend accessible routing with OSM road networks");
           directionsResult = await accessibleRouteService.getAccessibleRoute(routingParams);
 
           // Ensure we have valid route data
           directionsResult = ensureValidRouteData(directionsResult);
 
-          console.log("Backend routing result received:",
+          console.log("OSM-based routing result received:",
             `points: ${directionsResult?.points?.length || 0}, ` +
             `hasObstacles: ${directionsResult?.hasObstacles}, ` +
             `distance: ${directionsResult?.distance}, ` +
             `duration: ${directionsResult?.duration}`
           );
         } catch (error) {
-          console.error("Error with backend routing, falling back to frontend implementation:", error);
+          console.error("Error with OSM-based routing, falling back to Google Directions API:", error);
 
-          // Fallback to the original frontend implementation if backend fails
-          try {
-            console.log("Attempting to use frontend navigation service fallback");
-            directionsResult = await getAccessibleRoute(
-              originLocation,
-              destination.location,
-              relevantObstacles,
-              transportMode
-            );
-            console.log("Frontend fallback routing result received:",
-              `points: ${directionsResult?.points?.length || 0}, ` +
-              `distance: ${directionsResult?.distance}, ` +
-              `duration: ${directionsResult?.duration}`
-            );
-          } catch (fallbackError) {
-            console.error("Frontend fallback also failed, using standard Google directions:", fallbackError);
-
-            // Final fallback to standard Google routing
-            directionsResult = await getDirections(originLocation, destination.location, transportMode);
-            console.log("Final Google fallback directions received:",
-              `points: ${directionsResult?.points?.length || 0}, ` +
-              `distance: ${directionsResult?.distance}, ` +
-              `duration: ${directionsResult?.duration}`
-            );
-          }
+          // Final fallback to standard Google routing
+          directionsResult = await getDirections(originLocation, destination.location, transportMode);
+          console.log("Google Directions API fallback result received:",
+            `points: ${directionsResult?.points?.length || 0}, ` +
+            `distance: ${directionsResult?.distance}, ` +
+            `duration: ${directionsResult?.duration}`
+          );
         }
       } else {
         // Otherwise use standard Google directions
