@@ -1,5 +1,6 @@
 import { Marker } from "@/types/marker.types";
 import { getDirections } from "./places.service";
+import accessibleRouteService from "./accessible-route.service";
 
 // Constants for the grid-based path finding
 const GRID_CELL_SIZE = 1; // meters - size of each grid cell (finer grid)
@@ -47,6 +48,9 @@ interface RoadSegment {
 
 /**
  * Main function to get an accessible route avoiding obstacles
+ *
+ * This version uses the new backend-based accessible routing implementation
+ * but maintains backward compatibility with the grid-based approach
  */
 export async function getAccessibleRoute(
     origin: Point,
@@ -75,89 +79,22 @@ export async function getAccessibleRoute(
     }
 
     try {
-        // Get base route from Google Directions API
-        const baseRoute = await getDirections(
+        // Get accessible route using the backend service
+        const result = await accessibleRouteService.getAccessibleRoute({
             origin,
             destination,
-            transportMode,
-        );
-        const routeDistance = calculatePathDistance(baseRoute.points);
+            avoidObstacles: true,
+            userPreferences: {
+                avoidStairs: true,
+                maxSlope: 0.08, // 8% maximum grade
+                minimumWidth: 1.2, // 1.2 meters minimum width
+            },
+        });
 
-        // Debug log: base route points
-        console.log("Base route points:", baseRoute.points.length);
-        console.log("Obstacles provided:", obstacles.length);
-
-        // For very long routes (>3km), skip accessibility routing
-        if (routeDistance > 3000) {
-            console.log("Route too long, using regular directions");
-            // Return the API response as-is
-            return baseRoute;
-        }
-
-        // Filter obstacles to those near the route
-        const relevantObstacles = obstacles.filter((obstacle) =>
-            baseRoute.points.some((point) =>
-                haversineDistance(obstacle.location, point) <= GRID_EXPANSION
-            )
-        );
-
-        // Debug log: relevant obstacles
-        console.log(
-            "Relevant obstacles:",
-            relevantObstacles.length,
-            relevantObstacles,
-        );
-
-        if (relevantObstacles.length === 0) {
-            console.log("No relevant obstacles, using regular directions");
-            // Return the API response as-is
-            return baseRoute;
-        }
-
-        // Create grid around the route
-        const grid = createGrid(baseRoute.points, relevantObstacles);
-
-        // Find accessible path using A* algorithm
-        const accessiblePath = await findAccessiblePath(
-            origin,
-            destination,
-            grid,
-            baseRoute.points,
-        );
-
-        // Calculate new metrics for the custom route
-        const accessibleDistance = calculatePathDistance(accessiblePath);
-        const averageWalkingSpeed = 1.4; // meters per second
-        const accessibleDurationSeconds = accessibleDistance /
-            averageWalkingSpeed;
-        const accessibleDurationMinutes = Math.round(
-            accessibleDurationSeconds / 60,
-        );
-
-        // Convert distance from meters to kilometers for consistency with other API responses
-        const accessibleDistanceKm = accessibleDistance / 1000;
-
-        return {
-            points: accessiblePath,
-            distance: accessibleDistanceKm,
-            duration: accessibleDurationMinutes < 60
-                ? `${accessibleDurationMinutes} mins`
-                : `${Math.floor(accessibleDurationMinutes / 60)} hours ${
-                    accessibleDurationMinutes % 60
-                } mins`,
-            steps: [
-                {
-                    instructions: "Follow the accessible path.",
-                    distance: `${Math.round(accessibleDistance)} m`,
-                    duration: `${accessibleDurationMinutes} mins`,
-                    startLocation: accessiblePath[0],
-                    endLocation: accessiblePath[accessiblePath.length - 1],
-                },
-            ],
-        };
+        return result;
     } catch (error) {
         console.error("Error in accessible routing:", error);
-        // Return the API response as-is on error
+        // Return the Google Directions API response as fallback
         return getDirections(origin, destination, transportMode);
     }
 }
@@ -308,30 +245,30 @@ function markRoadNetwork(
  * Calculate obstacle cost for a grid cell
  */
 function calculateCellObstacleCost(point: Point, obstacles: Marker[]): number {
-    let maxCost = 0;
+    let totalCost = 0;
 
     for (const obstacle of obstacles) {
         const distance = haversineDistance(point, obstacle.location);
-        if (distance <= GRID_CELL_SIZE) {
-            // Calculate weighted cost based on obstacle type and severity
-            const baseCost = OBSTACLE_WEIGHTS[obstacle.obstacleType] ||
-                OBSTACLE_WEIGHTS.OTHER;
-            const severityWeight = obstacle.obstacleScore / 5; // Normalize to 0-1
-            const weightedCost = baseCost * severityWeight;
 
-            // Apply distance decay
-            const distanceDecay = 1 - (distance / GRID_CELL_SIZE);
-            const finalCost = weightedCost * distanceDecay;
+        // Only consider obstacles within a certain radius
+        if (distance <= GRID_EXPANSION) {
+            // Calculate weight based on obstacle type and distance
+            const baseWeight =
+                OBSTACLE_WEIGHTS[
+                    obstacle.obstacleType as keyof typeof OBSTACLE_WEIGHTS
+                ] || OBSTACLE_WEIGHTS.OTHER;
+            const weight = baseWeight * (1 - distance / GRID_EXPANSION);
 
-            maxCost = Math.max(maxCost, finalCost);
+            // Add to total cost
+            totalCost += weight;
         }
     }
 
-    if (maxCost > 0) {
-        console.log("Obstacle cost at", point, ":", maxCost);
+    if (totalCost > 0) {
+        console.log("Obstacle cost at", point, ":", totalCost);
     }
 
-    return maxCost;
+    return totalCost;
 }
 
 /**
@@ -566,7 +503,17 @@ function getBoundingBox(
         minLng = Math.min(minLng, point.longitude);
     }
 
-    return { minLat, maxLat, minLng, maxLng };
+    // Add buffer
+    const latBuffer = GRID_EXPANSION / 111000; // Approximate meters to degrees
+    const lngBuffer = GRID_EXPANSION /
+        (111000 * Math.cos((minLat + maxLat) / 2 * Math.PI / 180));
+
+    return {
+        minLat: minLat - latBuffer,
+        maxLat: maxLat + latBuffer,
+        minLng: minLng - lngBuffer,
+        maxLng: maxLng + lngBuffer,
+    };
 }
 
 /**

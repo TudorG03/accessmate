@@ -1,5 +1,5 @@
 {
-  "version": "4",
+  "version": "5",
   "specifiers": {
     "jsr:@oak/commons@1": "1.0.0",
     "jsr:@std/assert@1": "1.0.11",
@@ -14,7 +14,8 @@
     "jsr:@std/path@1": "1.0.8",
     "jsr:@std/uuid@*": "1.0.5",
     "npm:@types/node@*": "22.12.0",
-    "npm:mongodb@^6.15.0": "6.15.0",
+    "npm:express@^4.17.0": "4.21.2",
+    "npm:mongodb@^6.15.0": "6.15.0_@aws-sdk+credential-providers@3.758.0_kerberos@2.1.0_mongodb-client-encryption@6.3.0_socks@2.8.4",
     "npm:mongoose@7.6.3": "7.6.3",
     "npm:mongoose@8.1.1": "8.1.1",
     "npm:mongoose@^6.7.0": "6.13.8",
@@ -571,7 +572,8 @@
       "integrity": "sha512-iaepho73/2Pz7w2eMS0Q5f83+0RKI7i4xmiYeBmDzfRVbQtTOG7Ts0S4HzJVsTMGI9keU8rNfuZr8DKfSt7Yyg==",
       "dependencies": [
         "@babel/types"
-      ]
+      ],
+      "bin": true
     },
     "@babel/plugin-transform-destructuring@7.25.9_@babel+core@7.26.10": {
       "integrity": "sha512-WkCGb/3ZxXepmMiX101nnGiU+1CAdut8oHyEOHxkKuS1qKpU2SMXE2uSvfz8PBuLd49V6LEsbtyPhWC7fnkgvQ==",
@@ -624,12 +626,12 @@
     "@isaacs/cliui@8.0.2": {
       "integrity": "sha512-O8jcjabXaleOG9DQ0+ARXWZBTfnP4WNAqzuiJK7ll44AmxGKv/J2M4TPjxjY3znBCfvBXFzucm1twdyFybFqEA==",
       "dependencies": [
-        "string-width-cjs@npm:string-width@4.2.3",
         "string-width@5.1.2",
-        "strip-ansi-cjs@npm:strip-ansi@6.0.1",
+        "string-width-cjs@npm:string-width@4.2.3",
         "strip-ansi@7.1.0",
-        "wrap-ansi-cjs@npm:wrap-ansi@7.0.0",
-        "wrap-ansi@8.1.0"
+        "strip-ansi-cjs@npm:strip-ansi@6.0.1",
+        "wrap-ansi@8.1.0",
+        "wrap-ansi-cjs@npm:wrap-ansi@7.0.0"
       ]
     },
     "@jridgewell/gen-mapping@0.3.8": {
@@ -671,15 +673,17 @@
         "@mongodb-js/devtools-proxy-support",
         "@mongodb-js/oidc-http-server-pages",
         "@mongodb-js/oidc-plugin",
-        "kerberos",
         "lodash.merge",
-        "mongodb-client-encryption",
+        "mongodb@6.15.0_kerberos@2.1.0_mongodb-client-encryption@6.3.0_socks@2.8.4_@aws-sdk+credential-providers@3.758.0",
         "mongodb-connection-string-url@3.0.2",
         "mongodb-log-writer",
-        "mongodb@6.15.0_kerberos@2.1.0_mongodb-client-encryption@6.3.0_socks@2.8.4_@aws-sdk+credential-providers@3.758.0",
-        "os-dns-native",
-        "resolve-mongodb-srv",
         "socks"
+      ],
+      "optionalDependencies": [
+        "kerberos",
+        "mongodb-client-encryption",
+        "os-dns-native",
+        "resolve-mongodb-srv"
       ]
     },
     "@mongodb-js/devtools-connect@3.7.2_@mongodb-js+oidc-plugin@1.1.6_mongodb@6.15.0_mongodb-log-writer@2.4.1__bson@6.10.3_kerberos@2.1.0_mongodb-client-encryption@6.3.0_socks@2.8.4": {
@@ -688,15 +692,17 @@
         "@mongodb-js/devtools-proxy-support",
         "@mongodb-js/oidc-http-server-pages",
         "@mongodb-js/oidc-plugin",
-        "kerberos",
         "lodash.merge",
-        "mongodb-client-encryption",
+        "mongodb@6.15.0_kerberos@2.1.0_mongodb-client-encryption@6.3.0_socks@2.8.4_@aws-sdk+credential-providers@3.758.0",
         "mongodb-connection-string-url@3.0.2",
         "mongodb-log-writer",
-        "mongodb@6.15.0_kerberos@2.1.0_mongodb-client-encryption@6.3.0_socks@2.8.4_@aws-sdk+credential-providers@3.758.0",
-        "os-dns-native",
-        "resolve-mongodb-srv",
         "socks"
+      ],
+      "optionalDependencies": [
+        "kerberos",
+        "mongodb-client-encryption",
+        "os-dns-native",
+        "resolve-mongodb-srv"
       ]
     },
     "@mongodb-js/devtools-connect@3.7.2_@mongodb-js+oidc-plugin@1.1.6_mongodb@6.15.0_mongodb-log-writer@2.4.1__bson@6.10.3_kerberos@2.1.0_mongodb-client-encryption@6.3.0_socks@2.8.4_bson@6.10.3": {
@@ -705,15 +711,17 @@
         "@mongodb-js/devtools-proxy-support",
         "@mongodb-js/oidc-http-server-pages",
         "@mongodb-js/oidc-plugin",
-        "kerberos",
         "lodash.merge",
-        "mongodb-client-encryption",
+        "mongodb@6.15.0_kerberos@2.1.0_mongodb-client-encryption@6.3.0_socks@2.8.4_@aws-sdk+credential-providers@3.758.0",
         "mongodb-connection-string-url@3.0.2",
         "mongodb-log-writer",
-        "mongodb@6.15.0_kerberos@2.1.0_mongodb-client-encryption@6.3.0_socks@2.8.4_@aws-sdk+credential-providers@3.758.0",
-        "os-dns-native",
-        "resolve-mongodb-srv",
         "socks"
+      ],
+      "optionalDependencies": [
+        "kerberos",
+        "mongodb-client-encryption",
+        "os-dns-native",
+        "resolve-mongodb-srv"
       ]
     },
     "@mongodb-js/devtools-proxy-support@0.4.4": {
@@ -777,7 +785,8 @@
         "@babel/plugin-transform-parameters",
         "@babel/plugin-transform-shorthand-properties",
         "@babel/types"
-      ]
+      ],
+      "bin": true
     },
     "@mongosh/autocomplete@3.10.0": {
       "integrity": "sha512-sE4wbWDI5xNo/tNhXt2zckFK0PqILyuDQKrHY+AKCxQoWXqqUvcOxwW3v9BMblAvHTwsdF2RG8XU8i1aolyN8A==",
@@ -810,22 +819,25 @@
         "askcharacter",
         "askpassword",
         "escape-string-regexp",
-        "get-console-process-list",
-        "glibc-version",
         "is-recoverable-error",
         "js-yaml",
-        "macos-export-certificate-and-key",
         "mongodb-connection-string-url@3.0.2",
-        "mongodb-crypt-library-version",
         "mongodb-log-writer",
         "numeral",
         "pretty-repl",
         "semver@7.7.1",
         "strip-ansi@6.0.1",
         "text-table",
-        "win-export-certificate-and-key",
         "yargs-parser"
-      ]
+      ],
+      "optionalDependencies": [
+        "get-console-process-list",
+        "glibc-version",
+        "macos-export-certificate-and-key",
+        "mongodb-crypt-library-version",
+        "win-export-certificate-and-key"
+      ],
+      "bin": true
     },
     "@mongosh/editor@3.10.0_mongodb@6.15.0_mongodb-log-writer@2.4.1__bson@6.10.3": {
       "integrity": "sha512-Cesp45K5h/T12sR0FD129g/IDsUDULLLVkKc9kXXF5NlJnKoZX7RhuJAHDPVf+GGzNRvNCCIQBmjPV0e0xvkzg==",
@@ -878,10 +890,12 @@
         "@aws-sdk/credential-providers",
         "@mongosh/errors",
         "bson@6.10.3",
+        "mongodb@6.15.0_@aws-sdk+credential-providers@3.758.0_kerberos@2.1.0_mongodb-client-encryption@6.3.0_socks@2.8.4",
         "mongodb-build-info",
-        "mongodb-client-encryption",
-        "mongodb-connection-string-url@3.0.2",
-        "mongodb@6.15.0_@aws-sdk+credential-providers@3.758.0_kerberos@2.1.0_mongodb-client-encryption@6.3.0_socks@2.8.4"
+        "mongodb-connection-string-url@3.0.2"
+      ],
+      "optionalDependencies": [
+        "mongodb-client-encryption"
       ]
     },
     "@mongosh/service-provider-core@3.3.0_@aws-sdk+credential-providers@3.758.0_mongodb-client-encryption@6.3.0": {
@@ -890,10 +904,12 @@
         "@aws-sdk/credential-providers",
         "@mongosh/errors",
         "bson@6.10.3",
+        "mongodb@6.15.0_@aws-sdk+credential-providers@3.758.0_mongodb-client-encryption@6.3.0_kerberos@2.1.0_socks@2.8.4",
         "mongodb-build-info",
-        "mongodb-client-encryption",
-        "mongodb-connection-string-url@3.0.2",
-        "mongodb@6.15.0_@aws-sdk+credential-providers@3.758.0_mongodb-client-encryption@6.3.0_kerberos@2.1.0_socks@2.8.4"
+        "mongodb-connection-string-url@3.0.2"
+      ],
+      "optionalDependencies": [
+        "mongodb-client-encryption"
       ]
     },
     "@mongosh/service-provider-node-driver@3.8.0_@mongodb-js+oidc-plugin@1.1.6_mongodb@6.15.0__kerberos@2.1.0__mongodb-client-encryption@6.3.0__socks@2.8.4__@aws-sdk+credential-providers@3.758.0_mongodb-log-writer@2.4.1__bson@6.10.3_kerberos@2.1.0_mongodb-client-encryption@6.3.0_socks@2.8.4": {
@@ -905,11 +921,13 @@
         "@mongosh/service-provider-core@3.3.0_@aws-sdk+credential-providers@3.758.0_kerberos@2.1.0_mongodb-client-encryption@6.3.0_socks@2.8.4",
         "@mongosh/types@3.6.0_@mongodb-js+oidc-plugin@1.1.6_mongodb@6.15.0__kerberos@2.1.0__mongodb-client-encryption@6.3.0__socks@2.8.4__@aws-sdk+credential-providers@3.758.0_mongodb-log-writer@2.4.1__bson@6.10.3",
         "aws4",
-        "kerberos",
-        "mongodb-client-encryption",
-        "mongodb-connection-string-url@3.0.2",
         "mongodb@6.15.0_kerberos@2.1.0_mongodb-client-encryption@6.3.0_socks@2.8.4_@aws-sdk+credential-providers@3.758.0",
+        "mongodb-connection-string-url@3.0.2",
         "socks"
+      ],
+      "optionalDependencies": [
+        "kerberos",
+        "mongodb-client-encryption"
       ]
     },
     "@mongosh/shell-api@3.10.0": {
@@ -1392,7 +1410,8 @@
       "integrity": "sha512-jUr5esgChu4k7VzesH/Nww3EysuyGJJcTEEiXqILUFKpO96PNyEXmK21M6nE0TSqGA1PeEg1MzgqJaoFsn9JMw==",
       "dependencies": [
         "acorn"
-      ]
+      ],
+      "deprecated": true
     },
     "acorn-private-class-elements@1.0.0_acorn@8.14.1": {
       "integrity": "sha512-zYNcZtxKgVCg1brS39BEou86mIao1EV7eeREG+6WMwKbuYTeivRRs6S2XdWnboRde6G9wKh2w+WBydEyJsJ6mg==",
@@ -1415,7 +1434,8 @@
       ]
     },
     "acorn@8.14.1": {
-      "integrity": "sha512-OvQ/2pUDKmgfCg++xsTX1wGxfTaszcHVcTctW4UJB4hibJx2HXxxO5UmVgyjMa+ZDsiaf5wWLXYpRWMmBI0QHg=="
+      "integrity": "sha512-OvQ/2pUDKmgfCg++xsTX1wGxfTaszcHVcTctW4UJB4hibJx2HXxxO5UmVgyjMa+ZDsiaf5wWLXYpRWMmBI0QHg==",
+      "bin": true
     },
     "agent-base@7.1.3": {
       "integrity": "sha512-jRR5wdylq8CkOe6hei19GGZnxM6rBGwFl3Bg0YItGDimvjGtAvdZk4Pu6Cl4u4Igsws4a1fd1Vq3ezrhn4KmFw=="
@@ -1549,7 +1569,8 @@
         "electron-to-chromium",
         "node-releases",
         "update-browserslist-db"
-      ]
+      ],
+      "bin": true
     },
     "bson@4.7.2": {
       "integrity": "sha512-Ry9wCtIZ5kGqkJoi6aD8KjxFZEx78guTQDnpXWiNthsxzrxAK/i8E6pCHAIZTbaEFWcOCvbecMukfK7XUvyLpQ==",
@@ -1661,7 +1682,8 @@
       "dependencies": [
         "buildcheck",
         "nan"
-      ]
+      ],
+      "scripts": true
     },
     "cross-spawn@7.0.6": {
       "integrity": "sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==",
@@ -1755,7 +1777,8 @@
         "commander",
         "minimatch@9.0.1",
         "semver@7.7.1"
-      ]
+      ],
+      "bin": true
     },
     "ee-first@1.1.1": {
       "integrity": "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="
@@ -1815,12 +1838,16 @@
       "dependencies": [
         "esprima",
         "estraverse",
-        "esutils",
+        "esutils"
+      ],
+      "optionalDependencies": [
         "source-map"
-      ]
+      ],
+      "bin": true
     },
     "esprima@4.0.1": {
-      "integrity": "sha512-eGuFFw7Upda+g4p+QHvnW0RyTX/SVeJBDM/gCtMARO0cLuT2HcEKnTPvhjV6aGeqrCB/sbNop0Kszm0jsaWU4A=="
+      "integrity": "sha512-eGuFFw7Upda+g4p+QHvnW0RyTX/SVeJBDM/gCtMARO0cLuT2HcEKnTPvhjV6aGeqrCB/sbNop0Kszm0jsaWU4A==",
+      "bin": true
     },
     "estraverse@5.3.0": {
       "integrity": "sha512-MMdARuVEQziNTeJD8DgMqmhwR11BRQ/cBP+pLtYdSTnf3MIO8fFeiINEbX36ZdNlfU/7A9f3gUw49B3oQsvwBA=="
@@ -1902,7 +1929,8 @@
       "integrity": "sha512-xkjOecfnKGkSsOwtZ5Pz7Us/T6mrbPQrq0nh+aCO5V9nk5NLWmasAHumTKjiPJPWANe+kAZ84Jc8ooJkzZ88Sw==",
       "dependencies": [
         "strnum"
-      ]
+      ],
+      "bin": true
     },
     "fault@1.0.4": {
       "integrity": "sha512-CJ0HCB5tL5fYTEA7ToAq5+kTwd++Borf1/bifxd9iT70QcXr4MRrO3Llf8Ifs70q+SJcGHFtnIE/Nw6giCtECA==",
@@ -1974,7 +2002,9 @@
       "dependencies": [
         "bindings",
         "node-addon-api@4.3.0"
-      ]
+      ],
+      "os": ["win32"],
+      "scripts": true
     },
     "get-intrinsic@1.3.0": {
       "integrity": "sha512-9fSjSaos/fRIVIp+xSJlE6lfwhES7LNtKaCBIamHsjr2na1BiABJPo0mOjjz8GJDURarmCPGqaiVg5mfjb98CQ==",
@@ -2017,7 +2047,9 @@
       "dependencies": [
         "bindings",
         "node-addon-api@8.3.1"
-      ]
+      ],
+      "scripts": true,
+      "bin": true
     },
     "glob@10.4.5": {
       "integrity": "sha512-7Bv8RF0k6xjo7d4A/PxYLbUCfb6c+Vpd2/mB2yRDlew7Jb5hEXiCD9ibfO7wpk8i4sevK6DFny9h7EYbM3/sHg==",
@@ -2028,7 +2060,8 @@
         "minipass@7.1.2",
         "package-json-from-dist",
         "path-scurry"
-      ]
+      ],
+      "bin": true
     },
     "globals@11.12.0": {
       "integrity": "sha512-WOBp/EEGUiIsJSp7wcv/y6MO+lV9UoncWqxuFfm8eBwzWNgyfBd6Gz+IeKQ9jCmyhoH99g15M3T+QaVHFjizVA=="
@@ -2119,10 +2152,12 @@
       "integrity": "sha512-Bm6H79i01DjgGTCWjUuCjJ6QDo1HB96PT/xCYuyJUP9WFbVDrLSbG4EZCvOCun2rNswZb0c3e4Jt/ws795esHA=="
     },
     "is-docker@2.2.1": {
-      "integrity": "sha512-F+i2BKsFrH66iaUFc0woD8sLy8getkwTwtOBjvs56Cx4CgJDeKQeqfz8wAYiSb8JOprWhHH5p77PbmYCvvUuXQ=="
+      "integrity": "sha512-F+i2BKsFrH66iaUFc0woD8sLy8getkwTwtOBjvs56Cx4CgJDeKQeqfz8wAYiSb8JOprWhHH5p77PbmYCvvUuXQ==",
+      "bin": true
     },
     "is-docker@3.0.0": {
-      "integrity": "sha512-eljcgEDlEns/7AXFosB5K/2nCM4P7FQPkGc/DWLy5rmFEWvZayGrik1d9/QIY5nJ4f9YsVvBkA6kJpHn9rISdQ=="
+      "integrity": "sha512-eljcgEDlEns/7AXFosB5K/2nCM4P7FQPkGc/DWLy5rmFEWvZayGrik1d9/QIY5nJ4f9YsVvBkA6kJpHn9rISdQ==",
+      "bin": true
     },
     "is-fullwidth-code-point@3.0.0": {
       "integrity": "sha512-zymm5+u+sCsSWyD9qNaejV3DFvhCKclKdizYaJUuHA83RLjb7nSuGnddCHGv0hk+KY7BMAlsWeK4Ueg6EV6XQg=="
@@ -2131,7 +2166,8 @@
       "integrity": "sha512-KIYLCCJghfHZxqjYBE7rEy0OBuTd5xCHS7tHVgvCLkx7StIoaxwNW3hCALgEUjFfeRk+MG/Qxmp/vtETEF3tRA==",
       "dependencies": [
         "is-docker@3.0.0"
-      ]
+      ],
+      "bin": true
     },
     "is-recoverable-error@1.0.3_acorn@8.14.1": {
       "integrity": "sha512-T06goBQXH5WCzWtzuU+kYhT3Ui0d3wgk8n4GR/3n9UjgO6cuphhel+W02ps/Z2PYZB8C+l//XAJk9tR5Txo6/w==",
@@ -2161,7 +2197,9 @@
     "jackspeak@3.4.3": {
       "integrity": "sha512-OGlZQpz2yfahA/Rd1Y8Cd9SIEsqvXkLVoSw/cgwhnhFMDbsQFeZYoJJ7bIZBS9BcamUW96asq/npPWugM+RQBw==",
       "dependencies": [
-        "@isaacs/cliui",
+        "@isaacs/cliui"
+      ],
+      "optionalDependencies": [
         "@pkgjs/parseargs"
       ]
     },
@@ -2176,7 +2214,8 @@
         "glob",
         "js-cookie",
         "nopt"
-      ]
+      ],
+      "bin": true
     },
     "js-cookie@3.0.5": {
       "integrity": "sha512-cEiJEAEoIbWfCZYKWhVwFuvPX1gETRYPw6LlaTKoxD3s2AkXzkCjnp6h0V77ozyqj0jakteJ4YqDJT830+lVGw=="
@@ -2188,16 +2227,19 @@
       "integrity": "sha512-wpxZs9NoxZaJESJGIZTyDEaYpl0FKSA+FB9aJiyemKhMwkxQg63h4T1KJgUGHpTqPDNRcmmYLugrRjJlBtWvRA==",
       "dependencies": [
         "argparse"
-      ]
+      ],
+      "bin": true
     },
     "jsbn@1.1.0": {
       "integrity": "sha512-4bYVV3aAMtDTTu4+xsDYa6sy9GyJ69/amsu9sYF2zqjiEoZA5xJi3BrfX3uY+/IekIu7MwdObdbDWpoZdBv3/A=="
     },
     "jsesc@3.1.0": {
-      "integrity": "sha512-/sM3dO2FOzXjKQhJuo0Q173wf2KOo8t4I8vHy6lF9poUp7bKT0/NHE8fPX23PwfhnykfqnC2xRxOnVw5XuGIaA=="
+      "integrity": "sha512-/sM3dO2FOzXjKQhJuo0Q173wf2KOo8t4I8vHy6lF9poUp7bKT0/NHE8fPX23PwfhnykfqnC2xRxOnVw5XuGIaA==",
+      "bin": true
     },
     "json5@2.2.3": {
-      "integrity": "sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg=="
+      "integrity": "sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg==",
+      "bin": true
     },
     "kareem@2.5.1": {
       "integrity": "sha512-7jFxRVm+jD+rkq3kY0iZDJfsO2/t4BBPeEb2qKn2lR/9KhuksYk5hxzfRYWMPV8P/x2d0kHD306YyWLzjjH+uA=="
@@ -2208,7 +2250,8 @@
         "bindings",
         "node-addon-api@6.1.0",
         "prebuild-install@7.1.1"
-      ]
+      ],
+      "scripts": true
     },
     "lodash.merge@4.6.2": {
       "integrity": "sha512-0KpjqXRVvrYyCsX1swR/XTK0va6VQkQM6MNo7PqW77ByjAhoARA8EfrP1N4+KlKj8YS0ZUCtRT/YUuhyYDujIQ=="
@@ -2243,7 +2286,9 @@
       "dependencies": [
         "bindings",
         "node-addon-api@4.3.0"
-      ]
+      ],
+      "os": ["darwin"],
+      "scripts": true
     },
     "math-intrinsics@1.1.0": {
       "integrity": "sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g=="
@@ -2273,7 +2318,8 @@
       ]
     },
     "mime@1.6.0": {
-      "integrity": "sha512-x0Vn8spI+wuJ1O6S7gnbaQg8Pxh4NNHb7KSINmEWKiPE4RKOplvijn+NkmYmmRgP68mc70j2EbeTFRsrswaQeg=="
+      "integrity": "sha512-x0Vn8spI+wuJ1O6S7gnbaQg8Pxh4NNHb7KSINmEWKiPE4RKOplvijn+NkmYmmRgP68mc70j2EbeTFRsrswaQeg==",
+      "bin": true
     },
     "mimic-fn@2.1.0": {
       "integrity": "sha512-OqbOk5oEQeAZ8WXWydlu9HJjz9WVdEIvamMCcXmuqUYjTknH/sqsWvhQ3vgwKFRR1HpjvNBKQ37nbJgYzGqGcg=="
@@ -2322,7 +2368,8 @@
       "integrity": "sha512-gKLcREMhtuZRwRAfqP3RFW+TK4JqApVBtOIftVgjuABpAtpxhPGaDcfvbhNvD0B8iD1oUr/txX35NjcaY6Ns/A=="
     },
     "mkdirp@1.0.4": {
-      "integrity": "sha512-vVqVZQyf3WLx2Shd0qJ9xuvqgAyKPLAiqITEtqW0oIUjzo3PePDd6fW9iFz30ef7Ysp/oiWqbhszeGWW2T6Gzw=="
+      "integrity": "sha512-vVqVZQyf3WLx2Shd0qJ9xuvqgAyKPLAiqITEtqW0oIUjzo3PePDd6fW9iFz30ef7Ysp/oiWqbhszeGWW2T6Gzw==",
+      "bin": true
     },
     "mongodb-build-info@1.7.2": {
       "integrity": "sha512-eoLFZvCIjcwijYJdxvYupj1c+55VAVm0o4gBJjrcDxxmmpm+bC4Ix9ayZbyhQdVXDZAGDi03NA0GghXjBVXnxg==",
@@ -2335,7 +2382,8 @@
       "dependencies": [
         "node-addon-api@4.3.0",
         "prebuild-install@7.1.3"
-      ]
+      ],
+      "scripts": true
     },
     "mongodb-connection-string-url@2.6.0": {
       "integrity": "sha512-WvTZlI9ab0QYtTYnuMLgobULWhokRjtC7db9LtcVfJ+Hsnyr5eo6ZtNAt3Ly24XZScGMelOcGtm7lSn0332tPQ==",
@@ -2356,7 +2404,9 @@
       "dependencies": [
         "bindings",
         "node-addon-api@4.3.0"
-      ]
+      ],
+      "scripts": true,
+      "bin": true
     },
     "mongodb-log-writer@2.4.1_bson@6.10.3": {
       "integrity": "sha512-kTVWtiUbayr2S54WeOeHpXvR80ASwlmoMsA3LIxH+PVZle8ddq7cXJXM3O5kkuT+Uni9+YNOTBwoRYVQlIAEUQ==",
@@ -2371,20 +2421,24 @@
     "mongodb@4.17.2": {
       "integrity": "sha512-mLV7SEiov2LHleRJPMPrK2PMyhXFZt2UQLC4VD4pnth3jMjYKHhtqfwwkkvS/NXuo/Fp3vbhaNcXrIDaLRb9Tg==",
       "dependencies": [
-        "@aws-sdk/credential-providers",
-        "@mongodb-js/saslprep",
         "bson@4.7.2",
         "mongodb-connection-string-url@2.6.0",
         "socks"
+      ],
+      "optionalDependencies": [
+        "@aws-sdk/credential-providers",
+        "@mongodb-js/saslprep"
       ]
     },
     "mongodb@5.9.0": {
       "integrity": "sha512-g+GCMHN1CoRUA+wb1Agv0TI4YTSiWr42B5ulkiAfLLHitGK1R+PkSAf3Lr5rPZwi/3F04LiaZEW0Kxro9Fi2TA==",
       "dependencies": [
-        "@mongodb-js/saslprep",
         "bson@5.5.1",
         "mongodb-connection-string-url@2.6.0",
         "socks"
+      ],
+      "optionalDependencies": [
+        "@mongodb-js/saslprep"
       ]
     },
     "mongodb@6.15.0": {
@@ -2393,6 +2447,15 @@
         "@mongodb-js/saslprep",
         "bson@6.10.3",
         "mongodb-connection-string-url@3.0.2"
+      ],
+      "optionalPeers": [
+        "@aws-sdk/credential-providers",
+        "@mongodb-js/zstd@^1.1.0 || ^2.0.0",
+        "gcp-metadata@^5.2.0",
+        "kerberos",
+        "mongodb-client-encryption",
+        "snappy@^7.2.2",
+        "socks"
       ]
     },
     "mongodb@6.15.0_@aws-sdk+credential-providers@3.758.0_kerberos@2.1.0_mongodb-client-encryption@6.3.0_socks@2.8.4": {
@@ -2404,6 +2467,12 @@
         "kerberos",
         "mongodb-client-encryption",
         "mongodb-connection-string-url@3.0.2",
+        "socks"
+      ],
+      "optionalPeers": [
+        "@aws-sdk/credential-providers",
+        "kerberos",
+        "mongodb-client-encryption",
         "socks"
       ]
     },
@@ -2417,6 +2486,12 @@
         "mongodb-client-encryption",
         "mongodb-connection-string-url@3.0.2",
         "socks"
+      ],
+      "optionalPeers": [
+        "@aws-sdk/credential-providers",
+        "kerberos",
+        "mongodb-client-encryption",
+        "socks"
       ]
     },
     "mongodb@6.15.0_kerberos@2.1.0_mongodb-client-encryption@6.3.0_socks@2.8.4_@aws-sdk+credential-providers@3.758.0": {
@@ -2428,6 +2503,12 @@
         "kerberos",
         "mongodb-client-encryption",
         "mongodb-connection-string-url@3.0.2",
+        "socks"
+      ],
+      "optionalPeers": [
+        "@aws-sdk/credential-providers",
+        "kerberos",
+        "mongodb-client-encryption",
         "socks"
       ]
     },
@@ -2479,7 +2560,8 @@
       "integrity": "sha512-Al155L/Gf1jxoJeNddevohMzQkKpjymFZtfY3Tr4YgIFeCGlbv3dg0wPtIjj9zCX53HPDGXdbs0xVOkr6F14LA==",
       "dependencies": [
         "@mongosh/cli-repl"
-      ]
+      ],
+      "bin": true
     },
     "mpath@0.9.0": {
       "integrity": "sha512-ikJRQTk8hw5DEoFVxHG1Gn9T/xcjtdnOKIU1JTmGjZZlg9LST2mBLmcX3/ICIbgJydT2GOc15RnNy5mHmzfSew=="
@@ -2559,7 +2641,8 @@
       "integrity": "sha512-taM24ViiimT/XntxbPyJQzCG+p4EKOpgD3mxFwW38mGjVUrfERQOeY4EDHjdnptttfHuHQXFx+lTP08Q+mLa/w==",
       "dependencies": [
         "abbrev"
-      ]
+      ],
+      "bin": true
     },
     "npm-run-path@4.0.1": {
       "integrity": "sha512-S48WzZW777zhNIrn7gxOlISNAqi9ZC/uQFnRdbeIHhZhCA6UqpkOT8T1G7BvfdgP4Er8gF4sUbaS0i7QvIfCWw==",
@@ -2634,7 +2717,8 @@
         "debug@4.4.0",
         "ipv6-normalize",
         "node-addon-api@4.3.0"
-      ]
+      ],
+      "scripts": true
     },
     "pac-proxy-agent@7.2.0": {
       "integrity": "sha512-TEB8ESquiLMc0lV8vcd5Ql/JAKAoyzHFXaStwjkzpOpC5Yv+pIzLfHvjTSdf3vpa2bMiUQrg9i6276yn8666aA==",
@@ -2699,7 +2783,8 @@
         "simple-get",
         "tar-fs",
         "tunnel-agent"
-      ]
+      ],
+      "bin": true
     },
     "prebuild-install@7.1.3": {
       "integrity": "sha512-8Mf2cbV7x1cXPUILADGI3wuhfqWvtiLA1iclTDbFRZkgRQS0NqsPZphna9V+HyTEadheuPmjaJMsbzKQFOzLug==",
@@ -2716,7 +2801,8 @@
         "simple-get",
         "tar-fs",
         "tunnel-agent"
-      ]
+      ],
+      "bin": true
     },
     "pretty-repl@4.0.1": {
       "integrity": "sha512-Ve+ZNS5fwxylks3TTR4su7SaNAHVOh++7J5R8VKFAHIjmAMS8X79rnETc/JJoqay52cfgeHum7vm2+9hFSys9Q==",
@@ -2772,7 +2858,8 @@
         "ini",
         "minimist",
         "strip-json-comments"
-      ]
+      ],
+      "bin": true
     },
     "readable-stream@3.6.2": {
       "integrity": "sha512-9u/sniCrY3D5WdsERHzHE4G2YCXqoG5FTHUiCC4SIbr6XcLZBY05ya9EKjYek9O5xOAwjGq+1JdGBAS7Q9ScoA==",
@@ -2786,7 +2873,8 @@
       "integrity": "sha512-flu1XTSLDJHvTnWu2aJh2w9jgGPcNYJn2obMkuzXiyWSz0MLXu9IRCjvirJ4zRoCPHJJPt3uLQVNJTrzFRWd1w==",
       "dependencies": [
         "whatwg-url@14.1.1"
-      ]
+      ],
+      "bin": true
     },
     "run-applescript@5.0.0": {
       "integrity": "sha512-XcT5rBksx1QdIhlFOCtgZkB99ZEouFZ1E2Kc2LHqNW13U3/74YGdkQRmThTwxy4QIyookibDKYZOPqX//6BlAg==",
@@ -2801,10 +2889,12 @@
       "integrity": "sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg=="
     },
     "semver@6.3.1": {
-      "integrity": "sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA=="
+      "integrity": "sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==",
+      "bin": true
     },
     "semver@7.7.1": {
-      "integrity": "sha512-hlq8tAfn0m/61p4BVRcPzIGr6LKiMwo4VM6dGi6pt4qcRkmNzTcWq6eCEjEh+qXjkMDvPlOFFSGwQjoEa6gyMA=="
+      "integrity": "sha512-hlq8tAfn0m/61p4BVRcPzIGr6LKiMwo4VM6dGi6pt4qcRkmNzTcWq6eCEjEh+qXjkMDvPlOFFSGwQjoEa6gyMA==",
+      "bin": true
     },
     "send@0.19.0": {
       "integrity": "sha512-dW41u5VfLXu8SJh5bwRmyYUbAoSB3c9uQh6L8h/KtsFREPWpbX1lrljJo186Jc4nmci/sGUZ9a0a0J2zgfq2hw==",
@@ -2935,10 +3025,13 @@
       "integrity": "sha512-r1X4KsBGedJqo7h8F5c4Ybpcr5RjyP+aWIG007uBPRjmdQWfEiVLzSK71Zji1B9sKxwaCvD8y8cwSkYrlLiRRg==",
       "dependencies": [
         "asn1",
-        "bcrypt-pbkdf",
+        "bcrypt-pbkdf"
+      ],
+      "optionalDependencies": [
         "cpu-features",
         "nan"
-      ]
+      ],
+      "scripts": true
     },
     "statuses@2.0.1": {
       "integrity": "sha512-RwNA9Z/7PrK06rYLIzFMlaF+l73iwpzsqRIFgbMLbTcLD6cOao82TaWefPXQvB2fOC4AjuYSEndS7N/mTCbkdQ=="
@@ -2997,7 +3090,7 @@
     },
     "system-ca@2.0.1": {
       "integrity": "sha512-9ZDV9yl8ph6Op67wDGPr4LykX86usE9x3le+XZSHfVMiiVJ5IRgmCWjLgxyz35ju9H3GDIJJZm4ogAeIfN5cQQ==",
-      "dependencies": [
+      "optionalDependencies": [
         "macos-export-certificate-and-key",
         "win-export-certificate-and-key"
       ]
@@ -3090,7 +3183,8 @@
         "browserslist",
         "escalade",
         "picocolors"
-      ]
+      ],
+      "bin": true
     },
     "util-deprecate@1.0.2": {
       "integrity": "sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw=="
@@ -3099,7 +3193,8 @@
       "integrity": "sha512-pMZTvIkT1d+TFGvDOqodOclx0QWkkgi6Tdoa8gC8ffGAAqz9pzPTZWAybbsHHoED/ztMtkv/VoYTYyShUn81hA=="
     },
     "uuid@9.0.1": {
-      "integrity": "sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA=="
+      "integrity": "sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==",
+      "bin": true
     },
     "vary@1.1.2": {
       "integrity": "sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg=="
@@ -3138,14 +3233,17 @@
       "integrity": "sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==",
       "dependencies": [
         "isexe"
-      ]
+      ],
+      "bin": true
     },
     "win-export-certificate-and-key@2.1.0": {
       "integrity": "sha512-WeMLa/2uNZcS/HWGKU2G1Gzeh3vHpV/UFvwLhJLKxPHYFAbubxxVcJbqmPXaqySWK1Ymymh16zKK5WYIJ3zgzA==",
       "dependencies": [
         "bindings",
         "node-addon-api@3.2.1"
-      ]
+      ],
+      "os": ["win32"],
+      "scripts": true
     },
     "wrap-ansi@7.0.0": {
       "integrity": "sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==",

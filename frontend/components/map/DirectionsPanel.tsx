@@ -14,14 +14,14 @@ interface DirectionStep {
 }
 
 interface DirectionsPanelProps {
-    steps: DirectionStep[];
+    steps: DirectionStep[] | undefined;
     visible: boolean;
     onClose: () => void;
     currentLocation: { latitude: number; longitude: number } | null;
 }
 
 export default function DirectionsPanel({
-    steps,
+    steps = [],
     visible,
     onClose,
     currentLocation
@@ -29,12 +29,15 @@ export default function DirectionsPanel({
     const { isDark } = useTheme();
     const [activeStepIndex, setActiveStepIndex] = useState(0);
 
+    // Ensure steps is always an array
+    const safeSteps = Array.isArray(steps) ? steps : [];
+
     // Find the closest step to the current location
     useEffect(() => {
-        if (!currentLocation || !steps.length) return;
+        if (!currentLocation || !safeSteps.length) return;
 
         // Calculate distances to start points of each step
-        const distances = steps.map((step, index) => {
+        const distances = safeSteps.map((step, index) => {
             const distance = calculateDistance(
                 currentLocation.latitude,
                 currentLocation.longitude,
@@ -52,13 +55,13 @@ export default function DirectionsPanel({
         if (closestIndex > activeStepIndex) {
             setActiveStepIndex(closestIndex);
         }
-    }, [currentLocation, steps]);
+    }, [currentLocation, safeSteps, activeStepIndex]);
 
-    if (!visible || !steps.length) return null;
+    if (!visible || !safeSteps.length) return null;
 
     // Only show the active step and the next one
-    const currentStep = steps[activeStepIndex];
-    const nextStep = activeStepIndex < steps.length - 1 ? steps[activeStepIndex + 1] : null;
+    const currentStep = safeSteps[activeStepIndex];
+    const nextStep = activeStepIndex < safeSteps.length - 1 ? safeSteps[activeStepIndex + 1] : null;
 
     return (
         <View
@@ -75,14 +78,14 @@ export default function DirectionsPanel({
             </View>
 
             <ScrollView className="p-2">
-                {steps.map((step, idx) => (
+                {safeSteps.map((step, idx) => (
                     <DirectionCard
                         key={idx}
                         instruction={step.instructions}
                         distance={step.distance}
                         duration={step.duration}
                         stepIndex={idx}
-                        totalSteps={steps.length}
+                        totalSteps={safeSteps.length}
                         isActive={idx === activeStepIndex}
                     />
                 ))}

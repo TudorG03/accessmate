@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { View, Text, ActivityIndicator, TouchableOpacity, Dimensions, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import MapView, { Marker as MapMarker, PROVIDER_GOOGLE, Region, Callout, Polyline, PointOfInterest } from "react-native-maps";
+import MapView, { Marker as MapMarker, PROVIDER_GOOGLE, Region, Callout, Polyline } from "react-native-maps";
 import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import AddMarkerModal from "@/components/markers/AddMarkerModal";
@@ -19,6 +19,7 @@ import DirectionsPanel from '@/components/map/DirectionsPanel';
 import { getAccessibleRoute } from '@/services/navigation.service';
 import useAuth from "../../stores/auth/hooks/useAuth";
 import { formatDistance } from "@/utils/distanceUtils";
+import accessibleRouteService from "@/services/accessible-route.service";
 
 type LocationObjectType = Location.LocationObject;
 
@@ -113,6 +114,18 @@ export default function MapScreen() {
     }
   };
 
+  // Add a helper function to ensure we have a valid route to display
+  const ensureValidRouteData = (routeData: any) => {
+    if (!routeData) return null;
+
+    // Check if points is missing but exists in a nested data property (handle nested responses)
+    if (!routeData.points && routeData.data && routeData.data.points) {
+      return routeData.data;
+    }
+
+    return routeData;
+  };
+
   // Handle route confirmation
   const handleRouteConfirmation = async (
     transportMode: 'walking' | 'driving',
@@ -122,9 +135,11 @@ export default function MapScreen() {
       address: string,
       location: { latitude: number, longitude: number }
     },
-    useAccessibleRouting: boolean = true
+    useAccessibleRouting: boolean = true,
+    useOsmRouting: boolean = true
   ) => {
     if (!location) {
+      console.error("Cannot start navigation: User location is not available");
       return;
     }
 
@@ -137,11 +152,17 @@ export default function MapScreen() {
       // Update accessible route preference
       setUseAccessibleRoute(useAccessibleRouting);
 
+      console.log(`Starting navigation to ${destination.name} using ${transportMode} mode`);
+      console.log(`Accessible routing: ${useAccessibleRouting ? 'Enabled' : 'Disabled'}`);
+      console.log(`OSM routing: ${useOsmRouting ? 'Enabled' : 'Disabled'}`);
+
       // Get directions from current location to destination
       const originLocation = {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude
       };
+
+      console.log(`Origin: ${JSON.stringify(originLocation)}, Destination: ${JSON.stringify(destination.location)}`);
 
       let directionsResult;
 
@@ -149,35 +170,109 @@ export default function MapScreen() {
       if (transportMode === 'walking' && useAccessibleRouting) {
         // Get relevant obstacles from the store - only consider obstacles with moderate or higher severity
         const relevantObstacles = markers.filter(marker => marker.obstacleScore >= 2);
+        console.log(`Found ${relevantObstacles.length} relevant obstacles for routing`);
 
-        directionsResult = await getAccessibleRoute(
-          originLocation,
-          destination.location,
-          relevantObstacles,
-          transportMode
-        );
+        // Use the accessible routing service
+        const routingParams = {
+          origin: originLocation,
+          destination: destination.location,
+          avoidObstacles: true,
+          userPreferences: {
+            avoidStairs: true,
+            maxSlope: 0.08, // 8% maximum grade
+            minimumWidth: 1.2 // 1.2 meters minimum width
+          },
+          useOsmRouting: useOsmRouting // Use OSM-based routing which provides better road adherence
+        };
+
+        // Call the backend API for accessible routing
+        try {
+          console.log("Using backend accessible routing service");
+          directionsResult = await accessibleRouteService.getAccessibleRoute(routingParams);
+
+          // Ensure we have valid route data
+          directionsResult = ensureValidRouteData(directionsResult);
+
+          console.log("Backend routing result received:",
+            `points: ${directionsResult?.points?.length || 0}, ` +
+            `hasObstacles: ${directionsResult?.hasObstacles}, ` +
+            `distance: ${directionsResult?.distance}, ` +
+            `duration: ${directionsResult?.duration}`
+          );
+        } catch (error) {
+          console.error("Error with backend routing, falling back to frontend implementation:", error);
+
+          // Fallback to the original frontend implementation if backend fails
+          try {
+            console.log("Attempting to use frontend navigation service fallback");
+            directionsResult = await getAccessibleRoute(
+              originLocation,
+              destination.location,
+              relevantObstacles,
+              transportMode
+            );
+            console.log("Frontend fallback routing result received:",
+              `points: ${directionsResult?.points?.length || 0}, ` +
+              `distance: ${directionsResult?.distance}, ` +
+              `duration: ${directionsResult?.duration}`
+            );
+          } catch (fallbackError) {
+            console.error("Frontend fallback also failed, using standard Google directions:", fallbackError);
+
+            // Final fallback to standard Google routing
+            directionsResult = await getDirections(originLocation, destination.location, transportMode);
+            console.log("Final Google fallback directions received:",
+              `points: ${directionsResult?.points?.length || 0}, ` +
+              `distance: ${directionsResult?.distance}, ` +
+              `duration: ${directionsResult?.duration}`
+            );
+          }
+        }
       } else {
         // Otherwise use standard Google directions
+        console.log("Using standard Google directions API");
         directionsResult = await getDirections(originLocation, destination.location, transportMode);
+        console.log("Google directions result received:",
+          `points: ${directionsResult?.points?.length || 0}, ` +
+          `distance: ${directionsResult?.distance}, ` +
+          `duration: ${directionsResult?.duration}`
+        );
       }
 
-      setRouteCoordinates(directionsResult.points);
+      // Check if we received a valid route
+      if (!directionsResult.points || directionsResult.points.length === 0) {
+        console.warn("No route points received from routing service");
+        setRouteCoordinates([]);
+      } else {
+        console.log(`Setting ${directionsResult.points.length} route coordinates`);
+        console.log("First point:", JSON.stringify(directionsResult.points[0]));
+        console.log("Last point:", JSON.stringify(directionsResult.points[directionsResult.points.length - 1]));
+        setRouteCoordinates(directionsResult.points);
+      }
+
       setRouteInfo({
         distance: directionsResult.distance,
         duration: directionsResult.duration
       });
-      setRouteSteps(directionsResult.steps);
+      setRouteSteps(directionsResult.steps || []);
       setShowDirections(true);
 
       // Fit map to show the entire route
-      if (mapRef.current && directionsResult.points.length > 0) {
+      if (mapRef.current && directionsResult.points && directionsResult.points.length > 0) {
+        console.log("Fitting map to route coordinates");
         mapRef.current.fitToCoordinates(directionsResult.points, {
           edgePadding: { top: 80, right: 50, bottom: 80, left: 50 },
           animated: true
         });
+      } else {
+        console.warn("Cannot fit map to coordinates: " +
+          (!mapRef.current ? "Map ref is null" : "No points available"));
       }
     } catch (error) {
       console.error('Error getting directions:', error);
+      // Reset to empty array on error
+      setRouteSteps([]);
+      setRouteCoordinates([]);
       // Show an error toast or alert here
     }
   };
@@ -407,12 +502,54 @@ export default function MapScreen() {
 
             {/* Display the route polyline if navigating */}
             {isNavigating && routeCoordinates.length > 0 && (
-              <Polyline
-                coordinates={routeCoordinates}
-                strokeWidth={5}
-                strokeColor="#F1B24A"
-                lineDashPattern={[1]}
-              />
+              <>
+                {/* Main route path - precise, dotted line with app's orange color */}
+                <Polyline
+                  coordinates={routeCoordinates}
+                  strokeWidth={5}
+                  strokeColor="#F1B24A"
+                  lineCap="round"
+                  lineJoin="round"
+                  lineDashPattern={[5, 5]}
+                />
+
+                {/* Outer glow effect for better visibility */}
+                <Polyline
+                  coordinates={routeCoordinates}
+                  strokeWidth={8}
+                  strokeColor="rgba(241, 178, 74, 0.3)"
+                  lineCap="round"
+                  lineJoin="round"
+                />
+
+                {/* Route points at key locations */}
+                {routeCoordinates
+                  .filter((_, index) => {
+                    // Show a subset of route points for visual cues
+                    // Only at turning points or spaced regularly
+                    if (index === 0 || index === routeCoordinates.length - 1) return false; // Skip first and last
+                    if (routeCoordinates.length < 20) return index % 3 === 0; // For shorter routes
+                    return index % Math.floor(routeCoordinates.length / 10) === 0; // ~10 points for longer routes
+                  })
+                  .map((coord, index) => (
+                    <MapMarker
+                      key={`routepoint-${index}`}
+                      coordinate={coord}
+                      anchor={{ x: 0.5, y: 0.5 }}
+                      tracksViewChanges={false}
+                    >
+                      <View style={{
+                        width: 8,
+                        height: 8,
+                        backgroundColor: '#F1B24A',
+                        borderRadius: 4,
+                        borderWidth: 1,
+                        borderColor: 'white',
+                      }} />
+                    </MapMarker>
+                  ))
+                }
+              </>
             )}
 
             {/* Display destination marker if navigating */}
@@ -510,7 +647,7 @@ export default function MapScreen() {
           {/* Directions Panel */}
           {location && (
             <DirectionsPanel
-              steps={routeSteps}
+              steps={routeSteps || []}
               visible={showDirections && isNavigating}
               onClose={() => setShowDirections(false)}
               currentLocation={{

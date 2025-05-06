@@ -10,9 +10,14 @@ import { formatDistance } from '@/utils/distanceUtils';
 interface RouteConfirmationModalProps {
     visible: boolean;
     onClose: () => void;
-    onConfirm: (transportMode: 'walking' | 'driving', destination: any, useAccessibleRoute: boolean) => void;
+    onConfirm: (
+        transportMode: 'walking' | 'driving',
+        destination: any,
+        useAccessibleRoute: boolean,
+        useOsmRouting: boolean
+    ) => void;
     placeId: string | null;
-    originLocation: { latitude: number; longitude: number } | null;
+    originLocation: { latitude: number, longitude: number } | null;
 }
 
 export default function RouteConfirmationModal({
@@ -23,11 +28,12 @@ export default function RouteConfirmationModal({
     originLocation
 }: RouteConfirmationModalProps) {
     const [placeDetails, setPlaceDetails] = useState<any>(null);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [isLoading, setLoading] = useState(false);
     const [selectedTransport, setSelectedTransport] = useState<'walking' | 'driving'>('walking');
-    const [routeInfo, setRouteInfo] = useState<{ distance: number; duration: string } | null>(null);
+    const [routeInfo, setRouteInfo] = useState<{ distance: number, duration: string } | null>(null);
+    const [error, setError] = useState<string | null>(null);
     const [useAccessibleRoute, setUseAccessibleRoute] = useState(true);
+    const [useOsmRouting, setUseOsmRouting] = useState(true);
 
     const { isDark, colors } = useTheme();
     const { markers } = useMarker();
@@ -92,15 +98,20 @@ export default function RouteConfirmationModal({
 
     function handleConfirm() {
         if (placeDetails) {
-            onConfirm(selectedTransport, {
-                placeId,
-                name: placeDetails.name,
-                address: placeDetails.formatted_address,
-                location: {
-                    latitude: placeDetails.geometry.location.lat,
-                    longitude: placeDetails.geometry.location.lng
-                }
-            }, useAccessibleRoute);
+            onConfirm(
+                selectedTransport,
+                {
+                    placeId,
+                    name: placeDetails.name,
+                    address: placeDetails.formatted_address,
+                    location: {
+                        latitude: placeDetails.geometry.location.lat,
+                        longitude: placeDetails.geometry.location.lng
+                    }
+                },
+                useAccessibleRoute,
+                useOsmRouting
+            );
         }
     }
 
@@ -123,7 +134,7 @@ export default function RouteConfirmationModal({
                         </TouchableOpacity>
                     </View>
 
-                    {loading ? (
+                    {isLoading ? (
                         <View className="flex-1 justify-center items-center py-10">
                             <ActivityIndicator size="large" color="#F1B24A" />
                             <Text className={`mt-4 text-center ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
@@ -225,11 +236,26 @@ export default function RouteConfirmationModal({
                                             : 'Standard route without accessibility optimizations.'}
                                     </Text>
 
-                                    {useAccessibleRoute && obstaclesNearby && (
-                                        <View className="mt-2 flex-row items-center">
-                                            <Ionicons name="information-circle" size={16} color={isDark ? "#a8c7f0" : "#3498db"} />
-                                            <Text className={`ml-1 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                {markers.filter(marker => marker.obstacleScore >= 2).length} obstacles detected in the area
+                                    {useAccessibleRoute && (
+                                        <View className="mt-4">
+                                            <View className="flex-row justify-between items-center mb-2">
+                                                <View className="flex-row items-center">
+                                                    <Ionicons name="map" size={22} color="#F1B24A" />
+                                                    <Text className={`ml-2 font-semibold ${isDark ? 'text-white' : 'text-gray-800'}`}>
+                                                        OSM Road Networks
+                                                    </Text>
+                                                </View>
+                                                <Switch
+                                                    value={useOsmRouting}
+                                                    onValueChange={setUseOsmRouting}
+                                                    trackColor={{ false: isDark ? '#4b5563' : '#d1d5db', true: '#F1B24A' }}
+                                                    thumbColor={isDark ? '#e5e7eb' : '#ffffff'}
+                                                />
+                                            </View>
+                                            <Text className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                {useOsmRouting
+                                                    ? 'Uses OpenStreetMap data for more accurate walkways.'
+                                                    : 'Uses Google Maps for default routing.'}
                                             </Text>
                                         </View>
                                     )}
@@ -248,20 +274,21 @@ export default function RouteConfirmationModal({
                     {/* Action Buttons */}
                     <View className="flex-row justify-between p-5 border-t border-gray-700">
                         <TouchableOpacity
-                            className={`flex-1 py-4 rounded-lg items-center justify-center mx-1 ${isDark ? 'bg-gray-700' : 'bg-gray-100'}`}
+                            className={`px-6 py-3 rounded-lg ${isDark ? 'bg-gray-800' : 'bg-gray-200'}`}
                             onPress={onClose}
                         >
-                            <Text className={`font-bold ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>Cancel</Text>
+                            <Text className={isDark ? 'text-white' : 'text-gray-800'}>Cancel</Text>
                         </TouchableOpacity>
+
                         <TouchableOpacity
-                            className={`flex-1 py-4 rounded-lg items-center justify-center mx-1 ${(!placeDetails || loading)
-                                ? `${isDark ? 'bg-gray-700' : 'bg-gray-300'} opacity-70`
-                                : 'bg-[#F1B24A]'
-                                }`}
+                            className={`px-6 py-3 rounded-lg ${!placeDetails || isLoading ? 'bg-gray-600' : 'bg-[#F1B24A]'}`}
                             onPress={handleConfirm}
-                            disabled={!placeDetails || loading}
+                            disabled={!placeDetails || isLoading}
                         >
-                            <Text className="text-white font-bold">Start Navigation</Text>
+                            <View className="flex-row items-center">
+                                <Text className={`font-medium text-white mr-1`}>Start</Text>
+                                <Ionicons name="navigate" size={16} color="white" />
+                            </View>
                         </TouchableOpacity>
                     </View>
                 </View>
