@@ -10,7 +10,7 @@ export interface IReview extends Document {
   accessibilityRating: number;
   description: string;
   images: string[];
-  accessiblityScore: number,
+  accessibilityScore: number;
   questions: {
     ramp: boolean;
     wideDoors: boolean;
@@ -33,10 +33,10 @@ const reviewSchema: Schema = new Schema({
   images: [{ type: String }],
   accessibilityScore: { type: Number, min: 1, max: 5 },
   questions: {
-    ramp: { type: String },
-    wideDoors: { type: String },
-    elevator: { type: String },
-    adaptedToilets: { type: String },
+    ramp: { type: Boolean, default: null },
+    wideDoors: { type: Boolean, default: null },
+    elevator: { type: Boolean, default: null },
+    adaptedToilets: { type: Boolean, default: null },
   },
 }, {
   timestamps: true,

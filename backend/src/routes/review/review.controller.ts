@@ -87,13 +87,40 @@ export const getUserReviews = async (ctx: RouterContext<"/user/:userId">) => {
   }
 };
 
-export const getLocationReviews = async (
-  ctx: RouterContext<"/location/:locationId">,
-) => {
+export const getLocationReviews = async (ctx: Context) => {
   try {
-    const { locationId } = ctx.params;
+    const lat = ctx.request.url.searchParams.get("lat");
+    const lng = ctx.request.url.searchParams.get("lng");
 
-    const reviews = await Review.find({ locationId })
+    if (!lat || !lng) {
+      ctx.response.status = 400;
+      ctx.response.body = { message: "Latitude and longitude are required" };
+      return;
+    }
+
+    const latitude = parseFloat(lat);
+    const longitude = parseFloat(lng);
+
+    if (isNaN(latitude) || isNaN(longitude)) {
+      ctx.response.status = 400;
+      ctx.response.body = { message: "Invalid latitude or longitude format" };
+      return;
+    }
+
+    // Define a small tolerance for coordinate matching (approximately a few meters)
+    const COORD_TOLERANCE = 0.0001;
+
+    // Find reviews within the coordinate tolerance
+    const reviews = await Review.find({
+      "location.latitude": {
+        $gte: latitude - COORD_TOLERANCE,
+        $lte: latitude + COORD_TOLERANCE,
+      },
+      "location.longitude": {
+        $gte: longitude - COORD_TOLERANCE,
+        $lte: longitude + COORD_TOLERANCE,
+      },
+    })
       .populate("userId", "displayName email")
       .sort({ createdAt: -1 });
 
@@ -134,6 +161,44 @@ export const createReview = async (ctx: Context) => {
       return;
     }
 
+    // Calculate accessibility score based on answered questions
+    let accessibilityScore = null; // Default minimum score
+
+    // Count how many questions were answered as true
+    let answeredQuestions = 0;
+    let trueAnswers = 0;
+
+    if (body.questions.ramp !== null) {
+      answeredQuestions++;
+      if (body.questions.ramp === true) trueAnswers++;
+    }
+
+    if (body.questions.wideDoors !== null) {
+      answeredQuestions++;
+      if (body.questions.wideDoors === true) trueAnswers++;
+    }
+
+    if (body.questions.elevator !== null) {
+      answeredQuestions++;
+      if (body.questions.elevator === true) trueAnswers++;
+    }
+
+    if (body.questions.adaptedToilets !== null) {
+      answeredQuestions++;
+      if (body.questions.adaptedToilets === true) trueAnswers++;
+    }
+
+    // If any questions were answered, calculate a score from 1-5
+    if (answeredQuestions > 0) {
+      // Calculate percentage of true answers and map to 1-5 scale
+      const percentage = trueAnswers / answeredQuestions;
+      // Map 0% to 1, 100% to 5
+      accessibilityScore = Math.max(
+        1,
+        Math.min(5, Math.round(1 + percentage * 4)),
+      );
+    }
+
     const review = new Review({
       userId: authUser.userId,
       location: body.location,
@@ -142,6 +207,7 @@ export const createReview = async (ctx: Context) => {
       description: body.description,
       images: body.images || [],
       questions: body.questions,
+      accessibilityScore: accessibilityScore,
     });
 
     await review.save();
@@ -199,6 +265,45 @@ export const updateReview = async (ctx: RouterContext<"/:reviewId">) => {
         ...review.questions,
         ...body.questions,
       };
+
+      // Recalculate accessibility score if questions were updated
+      // Count how many questions are answered as true
+      let answeredQuestions = 0;
+      let trueAnswers = 0;
+
+      if (review.questions.ramp !== null) {
+        answeredQuestions++;
+        if (review.questions.ramp === true) trueAnswers++;
+      }
+
+      if (review.questions.wideDoors !== null) {
+        answeredQuestions++;
+        if (review.questions.wideDoors === true) trueAnswers++;
+      }
+
+      if (review.questions.elevator !== null) {
+        answeredQuestions++;
+        if (review.questions.elevator === true) trueAnswers++;
+      }
+
+      if (review.questions.adaptedToilets !== null) {
+        answeredQuestions++;
+        if (review.questions.adaptedToilets === true) trueAnswers++;
+      }
+
+      // If any questions were answered, calculate a score from 1-5
+      if (answeredQuestions > 0) {
+        // Calculate percentage of true answers and map to 1-5 scale
+        const percentage = trueAnswers / answeredQuestions;
+        // Map 0% to 1, 100% to 5
+        review.accessibilityScore = Math.max(
+          1,
+          Math.min(5, Math.round(1 + percentage * 4)),
+        );
+      } else {
+        // Default to 1 if no questions answered
+        review.accessibilityScore = 1;
+      }
     }
 
     await review.save();

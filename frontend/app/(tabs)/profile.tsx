@@ -95,17 +95,14 @@ export default function ProfileScreen() {
 
           {/* Preferences Settings */}
           <View className="p-4 rounded-lg mb-6" style={styles.card}>
-            <Text className="text-lg font-semibold mb-2" style={styles.text}>
+            <Text className="text-lg font-bold mb-2" style={styles.text}>
               Preferences
             </Text>
             <UnitPreferenceSelector />
           </View>
 
           {/* Theme Settings */}
-          <View className="p-4 rounded-lg mb-6" style={styles.card}>
-            <Text className="text-lg font-semibold mb-2" style={styles.text}>
-              Appearance
-            </Text>
+          <View className="rounded-lg mb-6" style={styles.card}>
             <ThemeToggle />
           </View>
 

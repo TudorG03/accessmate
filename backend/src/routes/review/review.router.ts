@@ -30,9 +30,9 @@ routerReview.get(
   getUserReviews,
 );
 
-// Get reviews by location (public)
+// Get reviews by location using query parameters (public)
 routerReview.get(
-  "/location/:locationId",
+  "/location",
   getLocationReviews,
 );
 

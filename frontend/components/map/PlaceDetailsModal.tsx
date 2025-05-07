@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Modal, TouchableOpacity, ActivityIndicator, ScrollView, Image, Linking, StyleSheet, TextInput } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, ActivityIndicator, ScrollView, Image, Linking, StyleSheet, TextInput, Alert } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '@/stores/theme/useTheme';
 import { getPlaceDetails, getPlacePhoto } from '@/services/places.service';
 import * as ImagePicker from 'expo-image-picker';
+import { useReview } from '@/stores/review';
 
 interface PlaceDetailsModalProps {
     visible: boolean;
@@ -26,6 +27,11 @@ interface ReviewFormState {
         wideDoors: boolean | null;
         elevator: boolean | null;
         adaptedToilets: boolean | null;
+    };
+    locationName: string;
+    location: {
+        latitude: number;
+        longitude: number;
     };
 }
 
@@ -53,11 +59,26 @@ export default function PlaceDetailsModal({
             elevator: null,
             adaptedToilets: null,
         },
+        locationName: '',
+        location: {
+            latitude: 0,
+            longitude: 0
+        }
     });
     const [reviewLoading, setReviewLoading] = useState(false);
     const [reviewError, setReviewError] = useState('');
+    const [placeReviews, setPlaceReviews] = useState([]);
+    const [showAllReviews, setShowAllReviews] = useState(false);
 
     const { isDark } = useTheme();
+    const {
+        createReview,
+        isLoading: reviewStoreLoading,
+        error: reviewStoreError,
+        clearError,
+        locationReviews,
+        fetchLocationReviews
+    } = useReview();
 
     // Reset state when modal is hidden
     useEffect(() => {
@@ -86,6 +107,45 @@ export default function PlaceDetailsModal({
             fetchPlacePhotos();
         }
     }, [placeDetails]);
+
+    // Reset review form state when placeDetails change
+    useEffect(() => {
+        if (placeDetails) {
+            setReviewForm({
+                accessibilityRating: 0,
+                description: '',
+                images: [],
+                questions: {
+                    ramp: null,
+                    wideDoors: null,
+                    elevator: null,
+                    adaptedToilets: null,
+                },
+                locationName: placeDetails.name || '',
+                location: {
+                    latitude: placeDetails.geometry?.location.lat || 0,
+                    longitude: placeDetails.geometry?.location.lng || 0
+                }
+            });
+        }
+    }, [placeDetails]);
+
+    // Add effect to fetch reviews when place details are loaded
+    useEffect(() => {
+        if (placeDetails?.geometry?.location) {
+            const fetchReviews = async () => {
+                try {
+                    await fetchLocationReviews(
+                        placeDetails.geometry.location.lat,
+                        placeDetails.geometry.location.lng
+                    );
+                } catch (err) {
+                    console.error('Error fetching reviews for location:', err);
+                }
+            };
+            fetchReviews();
+        }
+    }, [placeDetails, fetchLocationReviews]);
 
     async function fetchPlaceDetails() {
         if (!placeId) {
@@ -238,7 +298,7 @@ export default function PlaceDetailsModal({
                 {[...Array(emptyStars)].map((_, i) => (
                     <Ionicons key={`empty-${i}`} name="star-outline" size={16} color="#F1B24A" />
                 ))}
-                <Text className={`ml-1 ${isDark ? 'text-white' : 'text-gray-800'}`}>
+                <Text className={`ml-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                     {rating.toFixed(1)}
                 </Text>
                 {placeDetails.user_ratings_total > 0 && (
@@ -265,6 +325,11 @@ export default function PlaceDetailsModal({
                 elevator: null,
                 adaptedToilets: null,
             },
+            locationName: '',
+            location: {
+                latitude: 0,
+                longitude: 0
+            }
         });
         setReviewError('');
     }
@@ -305,13 +370,87 @@ export default function PlaceDetailsModal({
         setReviewForm((prev) => ({ ...prev, description: text }));
     }
     async function handleSubmitReview() {
-        setReviewLoading(true);
-        setReviewError('');
-        // TODO: Implement review submission logic (API call)
-        setTimeout(() => {
+        try {
+            setReviewLoading(true);
+            setReviewError('');
+
+            if (!placeDetails) {
+                setReviewError('Unable to determine location. Please try again.');
+                setReviewLoading(false);
+                return;
+            }
+
+            // Create the review data from the form
+            const reviewData = {
+                accessibilityRating: reviewForm.accessibilityRating,
+                description: reviewForm.description,
+                images: reviewForm.images,
+                questions: reviewForm.questions,
+                locationName: placeDetails.name,
+                location: {
+                    latitude: placeDetails.geometry.location.lat,
+                    longitude: placeDetails.geometry.location.lng
+                }
+            };
+
+            // Validate required fields before submission
+            if (!reviewData.accessibilityRating) {
+                setReviewError('Please provide an overall accessibility rating');
+                setReviewLoading(false);
+                return;
+            }
+
+            // Submit the review
+            const result = await createReview(reviewData);
+
+            if (result) {
+                // Fetch the updated reviews for this location
+                await fetchLocationReviews(
+                    placeDetails.geometry.location.lat,
+                    placeDetails.geometry.location.lng
+                );
+
+                // Show success feedback and close modal
+                Alert.alert(
+                    "Review Submitted",
+                    "Thank you for your review! Your contribution helps make places more accessible for everyone.",
+                    [{ text: "OK", onPress: () => setReviewModalVisible(false) }]
+                );
+            } else if (reviewStoreError) {
+                // If there was an error from the store, show it
+                setReviewError(reviewStoreError);
+                clearError(); // Clear the store error
+            }
+        } catch (error) {
+            console.error('Error submitting review:', error);
+            setReviewError(error instanceof Error ? error.message : 'Failed to submit review. Please try again.');
+        } finally {
             setReviewLoading(false);
-            setReviewModalVisible(false);
-        }, 1000);
+        }
+    }
+
+    // Add a function to calculate the overall accessibility score based on reviews
+    function calculateAccessibilityScore(reviews: any[]): number {
+        if (!reviews || reviews.length === 0) return 0;
+
+        let totalScore = 0;
+        let reviewCount = 0;
+
+        // Calculate score for each review and sum them up
+        reviews.forEach((review: any) => {
+            let reviewScore = review.accessibilityRating;
+
+            // If the review has an accessibilityScore, take the average
+            if (review.accessibilityScore) {
+                reviewScore = (reviewScore + review.accessibilityScore) / 2;
+            }
+
+            totalScore += reviewScore;
+            reviewCount++;
+        });
+
+        // Return the average score rounded to the nearest 0.5
+        return Math.round((totalScore / reviewCount) * 2) / 2;
     }
 
     return (
@@ -355,9 +494,43 @@ export default function PlaceDetailsModal({
 
                                 {/* Rating and price level */}
                                 <View className="flex-row items-center mb-3">
+                                    <Text className={`mr-2 font-semibold ${isDark ? 'text-white' : 'text-gray-800'}`}>
+                                        Overall:
+                                    </Text>
                                     {renderRating(placeDetails.rating)}
                                     {placeDetails.price_level !== undefined && renderPriceLevel(placeDetails.price_level)}
                                 </View>
+
+                                {/* Accessibility score */}
+                                {locationReviews && locationReviews.length > 0 && (
+                                    <View className="flex-row items-center mb-3">
+                                        <Text className={`mr-2 font-semibold ${isDark ? 'text-white' : 'text-gray-800'}`}>
+                                            Accessibility:
+                                        </Text>
+                                        <View className="flex-row">
+                                            {[1, 2, 3, 4, 5].map((score) => {
+                                                const accessibilityScore = calculateAccessibilityScore(locationReviews);
+                                                const isHalf = accessibilityScore % 1 !== 0 && Math.ceil(accessibilityScore) === score;
+                                                const isFull = score <= Math.floor(accessibilityScore);
+                                                return (
+                                                    <MaterialCommunityIcons
+                                                        key={score}
+                                                        name="wheelchair-accessibility"
+                                                        size={20}
+                                                        color={isFull ? '#F1B24A' : isHalf ? '#F1B24A' : isDark ? '#555' : '#ddd'}
+                                                        style={isHalf ? { opacity: 0.5 } : {}}
+                                                    />
+                                                );
+                                            })}
+                                        </View>
+                                        <Text className={`ml-1 ${isDark ? 'text-white' : 'text-gray-800'}`}>
+                                            {calculateAccessibilityScore(locationReviews).toFixed(1)}
+                                        </Text>
+                                        <Text className={`ml-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                            ({locationReviews.length})
+                                        </Text>
+                                    </View>
+                                )}
 
                                 {/* Place types */}
                                 {placeDetails.types && placeDetails.types.length > 0 && (
@@ -484,6 +657,118 @@ export default function PlaceDetailsModal({
                                     </View>
                                 )}
                             </View>
+
+                            {/* Reviews section */}
+                            {locationReviews && locationReviews.length > 0 && (
+                                <View className="mb-6">
+                                    <Text className={`font-semibold text-lg mb-3 ${isDark ? 'text-white' : 'text-gray-800'}`}>
+                                        Accessibility Reviews
+                                    </Text>
+
+                                    {/* Reviews list */}
+                                    {(showAllReviews ? locationReviews : locationReviews.slice(0, 1)).map((review, index) => (
+                                        <View key={review.id || index} className={`mb-4 p-3 rounded-lg ${isDark ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                                            <View className="flex-row items-center mb-2">
+                                                <View className="flex-row">
+                                                    {[1, 2, 3, 4, 5].map((star) => (
+                                                        <MaterialCommunityIcons
+                                                            key={star}
+                                                            name="wheelchair-accessibility"
+                                                            size={18}
+                                                            color={star <= review.accessibilityRating ? '#F1B24A' : isDark ? '#555' : '#ddd'}
+                                                        />
+                                                    ))}
+                                                </View>
+                                                <Text className={`ml-2 text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                    {new Date(review.createdAt).toLocaleDateString()}
+                                                </Text>
+                                            </View>
+
+                                            {/* User display name */}
+                                            {(() => {
+                                                // Handle the userId which might be a string ID or a populated user object
+                                                const userInfo = review.userId as any;
+                                                return userInfo && typeof userInfo === 'object' && userInfo.displayName ? (
+                                                    <View className="flex-row items-center mb-2">
+                                                        <Ionicons name="person-circle-outline" size={16} color={isDark ? '#F1B24A' : '#F1B24A'} />
+                                                        <Text className={`ml-1 ${isDark ? 'text-gray-300' : 'text-gray-700'} font-medium`}>
+                                                            {userInfo.displayName}
+                                                        </Text>
+                                                    </View>
+                                                ) : null;
+                                            })()}
+
+                                            {review.description && (
+                                                <Text className={`${isDark ? 'text-gray-300' : 'text-gray-700'} mb-2`}>
+                                                    {review.description}
+                                                </Text>
+                                            )}
+
+                                            {/* Review photos */}
+                                            {review.images && review.images.length > 0 && (
+                                                <View className="mb-3">
+                                                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                                        {review.images.map((imageUri, imgIndex) => (
+                                                            <View key={imgIndex} className="mr-2 rounded-lg overflow-hidden" style={{
+                                                                shadowColor: '#000',
+                                                                shadowOffset: { width: 0, height: 2 },
+                                                                shadowOpacity: 0.1,
+                                                                shadowRadius: 2,
+                                                                elevation: 2,
+                                                            }}>
+                                                                <Image
+                                                                    source={{ uri: imageUri }}
+                                                                    style={{ width: 120, height: 90 }}
+                                                                    resizeMode="cover"
+                                                                />
+                                                            </View>
+                                                        ))}
+                                                    </ScrollView>
+                                                </View>
+                                            )}
+
+                                            <View className="flex-row flex-wrap">
+                                                {review.questions.ramp !== null && (
+                                                    <View className={`mr-2 mb-1 px-2 py-1 rounded-md flex-row items-center ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                                                        <Ionicons name={review.questions.ramp ? "checkmark-circle" : "close-circle"} size={16} color={review.questions.ramp ? "green" : "red"} />
+                                                        <Text className={`ml-1 ${isDark ? 'text-gray-300' : 'text-gray-700'} text-xs`}>Ramp</Text>
+                                                    </View>
+                                                )}
+                                                {review.questions.wideDoors !== null && (
+                                                    <View className={`mr-2 mb-1 px-2 py-1 rounded-md flex-row items-center ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                                                        <Ionicons name={review.questions.wideDoors ? "checkmark-circle" : "close-circle"} size={16} color={review.questions.wideDoors ? "green" : "red"} />
+                                                        <Text className={`ml-1 ${isDark ? 'text-gray-300' : 'text-gray-700'} text-xs`}>Wide Doors</Text>
+                                                    </View>
+                                                )}
+                                                {review.questions.elevator !== null && (
+                                                    <View className={`mr-2 mb-1 px-2 py-1 rounded-md flex-row items-center ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                                                        <Ionicons name={review.questions.elevator ? "checkmark-circle" : "close-circle"} size={16} color={review.questions.elevator ? "green" : "red"} />
+                                                        <Text className={`ml-1 ${isDark ? 'text-gray-300' : 'text-gray-700'} text-xs`}>Elevator</Text>
+                                                    </View>
+                                                )}
+                                                {review.questions.adaptedToilets !== null && (
+                                                    <View className={`mr-2 mb-1 px-2 py-1 rounded-md flex-row items-center ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                                                        <Ionicons name={review.questions.adaptedToilets ? "checkmark-circle" : "close-circle"} size={16} color={review.questions.adaptedToilets ? "green" : "red"} />
+                                                        <Text className={`ml-1 ${isDark ? 'text-gray-300' : 'text-gray-700'} text-xs`}>Accessible Toilets</Text>
+                                                    </View>
+                                                )}
+                                            </View>
+                                        </View>
+                                    ))}
+
+                                    {/* Show all reviews link */}
+                                    {locationReviews.length > 1 && (
+                                        <TouchableOpacity
+                                            onPress={() => setShowAllReviews(!showAllReviews)}
+                                            className="py-2"
+                                        >
+                                            <Text className={`${isDark ? 'text-blue-300' : 'text-blue-600'}`}>
+                                                {showAllReviews ? 'Show less' : `Show all ${locationReviews.length} reviews`}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+                            )}
 
                             {/* Navigate and Review buttons */}
                             <View className="flex-row justify-between space-x-4 mt-2 mb-2">

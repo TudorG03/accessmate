@@ -54,11 +54,11 @@ export default function TabsLayout() {
       />
 
       <Tabs.Screen
-        name="places"
+        name="my-reviews"
         options={{
-          title: "Places",
+          title: "AccessViews",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="location" color={color} size={size} />
+            <Ionicons name="star" color={color} size={size} />
           ),
         }}
       />

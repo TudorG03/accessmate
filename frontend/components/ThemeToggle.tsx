@@ -34,7 +34,7 @@ export function ThemeToggle() {
 
   return (
     <View className="px-4 py-4">
-      <Text className="text-base font-medium mb-3" style={styles.text}>
+      <Text className="text-base font-bold text-lg mb-3" style={styles.text}>
         Appearance
       </Text>
 
@@ -70,10 +70,6 @@ export function ThemeToggle() {
           );
         })}
       </View>
-
-      <Text className="text-xs mt-3" style={styles.secondaryText}>
-        Current theme: {themeMode} (isDark: {isDark ? 'true' : 'false'})
-      </Text>
     </View>
   );
 } 
