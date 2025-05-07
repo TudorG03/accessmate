@@ -24,6 +24,7 @@ export async function findAccessibleRoute(ctx: Context) {
       destination,
       avoidObstacles,
       userPreferences,
+      useOsmRouting,
     } = body;
 
     // Validate input
@@ -50,7 +51,7 @@ export async function findAccessibleRoute(ctx: Context) {
       return;
     }
 
-    // For accessible routing, always try OSM grid-based routing first
+    // Always use OSM routing by default or when explicitly requested
     let routeResult;
     try {
       console.log("Attempting OSM grid-based routing...");
@@ -63,9 +64,21 @@ export async function findAccessibleRoute(ctx: Context) {
       console.log("OSM grid-based routing succeeded");
     } catch (osmError) {
       console.error(
-        "OSM grid-based routing failed, falling back to Google Directions API:",
+        "OSM grid-based routing failed:",
         osmError,
       );
+
+      // Only fall back to Google Directions API if useOsmRouting is not true
+      if (useOsmRouting === true) {
+        console.error(
+          "Not falling back to Google Directions API as useOsmRouting is true",
+        );
+        throw new Error(
+          "OSM grid-based routing failed and fallback is disabled",
+        );
+      }
+
+      console.log("Falling back to Google Directions API");
       routeResult = await graphService.findAccessibleRoute({
         origin,
         destination,

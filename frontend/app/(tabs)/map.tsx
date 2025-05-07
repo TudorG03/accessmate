@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { View, Text, ActivityIndicator, TouchableOpacity, Dimensions, StyleSheet } from "react-native";
+import { View, Text, ActivityIndicator, TouchableOpacity, Dimensions, StyleSheet, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MapView, { Marker as MapMarker, PROVIDER_GOOGLE, Region, Callout, Polyline } from "react-native-maps";
 import * as Location from "expo-location";
@@ -43,6 +43,7 @@ export default function MapScreen() {
   const [routeSteps, setRouteSteps] = useState<Array<any>>([]);
   const [showDirections, setShowDirections] = useState(false);
   const [useAccessibleRoute, setUseAccessibleRoute] = useState(true);
+  const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
 
   // New state for place details modal
   const [placeDetailsModalVisible, setPlaceDetailsModalVisible] = useState(false);
@@ -143,6 +144,9 @@ export default function MapScreen() {
     }
 
     try {
+      // Set route calculation to true to show loading spinner
+      setIsCalculatingRoute(true);
+
       // Update selectedPlace with the complete destination data including location
       setSelectedPlace(destination);
       setNavigationMode(transportMode);
@@ -180,7 +184,7 @@ export default function MapScreen() {
             maxSlope: 0.08, // 8% maximum grade
             minimumWidth: 1.2 // 1.2 meters minimum width
           },
-          useOsmRouting: true // Always use OSM-based routing by default
+          useOsmRouting: true // Always use OSM-based routing
         };
 
         // Call the backend API for accessible routing
@@ -198,7 +202,14 @@ export default function MapScreen() {
             `duration: ${directionsResult?.duration}`
           );
         } catch (error) {
-          console.error("Error with OSM-based routing, falling back to Google Directions API:", error);
+          console.error("Error with OSM-based routing:", error);
+
+          // Show an error to the user but continue with standard routing
+          Alert.alert(
+            "Accessible Routing Failed",
+            "The OSM-based accessible routing couldn't calculate a route. Falling back to standard directions.",
+            [{ text: "OK" }]
+          );
 
           // Final fallback to standard Google routing
           directionsResult = await getDirections(originLocation, destination.location, transportMode);
@@ -254,6 +265,9 @@ export default function MapScreen() {
       setRouteSteps([]);
       setRouteCoordinates([]);
       // Show an error toast or alert here
+    } finally {
+      // Set route calculation to false when finished (success or error)
+      setIsCalculatingRoute(false);
     }
   };
 
@@ -558,6 +572,18 @@ export default function MapScreen() {
               onLocationSelected={handleLocationSelected}
               onPlaceInfoRequested={handlePlaceInfoRequested}
             />
+          )}
+
+          {/* Route calculation loading indicator */}
+          {isCalculatingRoute && (
+            <View className="absolute top-0 bottom-0 left-0 right-0 justify-center items-center bg-black bg-opacity-30">
+              <View className={`p-4 rounded-xl ${isDark ? 'bg-gray-800' : 'bg-white'} shadow-md`}>
+                <ActivityIndicator size="large" color="#F1B24A" />
+                <Text className={`mt-2 font-medium text-center ${isDark ? 'text-white' : 'text-gray-800'}`}>
+                  Calculating accessible route...
+                </Text>
+              </View>
+            </View>
           )}
 
           {/* Loading indicator when fetching markers */}

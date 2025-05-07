@@ -89,6 +89,7 @@ export async function getAccessibleRoute(
                 maxSlope: 0.08, // 8% maximum grade
                 minimumWidth: 1.2, // 1.2 meters minimum width
             },
+            useOsmRouting: true, // Always use OSM routing
         });
 
         return result;
@@ -253,10 +254,9 @@ function calculateCellObstacleCost(point: Point, obstacles: Marker[]): number {
         // Only consider obstacles within a certain radius
         if (distance <= GRID_EXPANSION) {
             // Calculate weight based on obstacle type and distance
-            const baseWeight =
-                OBSTACLE_WEIGHTS[
-                    obstacle.obstacleType as keyof typeof OBSTACLE_WEIGHTS
-                ] || OBSTACLE_WEIGHTS.OTHER;
+            const baseWeight = OBSTACLE_WEIGHTS[
+                obstacle.obstacleType as keyof typeof OBSTACLE_WEIGHTS
+            ] || OBSTACLE_WEIGHTS.OTHER;
             const weight = baseWeight * (1 - distance / GRID_EXPANSION);
 
             // Add to total cost

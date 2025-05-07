@@ -22,6 +22,7 @@ interface RoutingParams {
         maxSlope?: number;
         minimumWidth?: number;
     };
+    useOsmRouting?: boolean;
 }
 
 // Interface for routing results
@@ -48,15 +49,21 @@ export async function getAccessibleRoute(
     params: RoutingParams,
 ): Promise<RoutingResult> {
     try {
+        // Always use OSM routing if not specified
+        const routingParams = {
+            ...params,
+            useOsmRouting: params.useOsmRouting !== false, // Default to true if not explicitly set to false
+        };
+
         console.log(
             "Requesting accessible route from backend with params:",
-            JSON.stringify(params),
+            JSON.stringify(routingParams),
         );
 
         // Call the backend API
         const response = await apiService.post(
             "/api/routing/accessible-route",
-            params,
+            routingParams,
         );
 
         // Check if the request was successful
@@ -114,8 +121,10 @@ export async function getAccessibleRoute(
                 );
 
                 // If we have very few points, it might be a straight line
-                // Try to fallback to Google Directions API if needed
-                if (routeData.points.length < 3) {
+                // Only try to fallback if we're not explicitly using OSM routing
+                if (
+                    routeData.points.length < 3 && !routingParams.useOsmRouting
+                ) {
                     console.warn(
                         "Route has too few points, may be a straight line",
                     );
@@ -169,7 +178,12 @@ export async function getAccessibleRoute(
     } catch (error) {
         console.error("Error getting accessible route:", error);
 
-        // Fallback to Google Directions API
+        // If we're using OSM routing, throw the error instead of falling back
+        if (params.useOsmRouting) {
+            throw new Error("OSM routing failed and fallback is disabled");
+        }
+
+        // Otherwise, fallback to Google Directions API
         console.log("Falling back to Google Directions API");
         const directionsResult = await getDirections(
             params.origin,
