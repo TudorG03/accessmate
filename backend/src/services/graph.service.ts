@@ -1,36 +1,34 @@
 /**
  * Graph Service for accessible routing
- * Manages OSM graph construction, caching, and routing algorithms
+ * Manages OSM grid-based routing for accessible path finding
  */
 
-import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import RoutingGraph, { IRoutingGraph } from "../models/routing/graph.model.ts";
 import MarkerModel from "../models/marker/marker.mongo.ts";
-import osmGridService from "./osm-grid.service.ts";
-
-// Promisify exec for running Python scripts
-const execAsync = promisify(exec);
 
 // Constants for graph operations
 const GRAPH_CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
-const MAX_GRAPH_SIZE = 5; // km - maximum size of graph to generate (radius)
 const GRAPH_BUFFER = 0.5; // km - buffer around route for graph generation
 const DEFAULT_NETWORK_TYPE = "walk";
 
 // Obstacle weight configuration
 const OBSTACLE_WEIGHTS = {
-  STAIRS: 1000,
-  NARROW_PATH: 800,
-  STEEP_INCLINE: 900,
-  UNEVEN_SURFACE: 700,
-  OBSTACLE_IN_PATH: 1000,
-  POOR_LIGHTING: 500,
-  CONSTRUCTION: 900,
-  MISSING_RAMP: 800,
-  MISSING_CROSSWALK: 700,
-  OTHER: 600,
+  STAIRS: 5,
+  NARROW_PATH: 3,
+  STEEP_INCLINE: 4,
+  CONSTRUCTION: 5,
+  POOR_LIGHTING: 2,
+  UNEVEN_SURFACE: 3,
+  CURB: 2,
+  NO_CURB_CUTS: 4,
+  NO_SIDEWALK: 4,
+  CROSSWALK_WITHOUT_SIGNAL: 2,
+  OTHER: 1,
 };
+
+// Maximum distance for graph-based routing in kilometers
+const MAX_GRAPH_SIZE = 50; // Don't try to route paths longer than 50km
 
 // Interface for routing parameters
 interface RoutingParams {
@@ -66,11 +64,86 @@ interface RoutingResult {
   }>;
 }
 
+// OSM Grid interfaces
+interface Point {
+  latitude: number;
+  longitude: number;
+}
+
+interface Obstacle {
+  location: Point;
+  obstacleType: string;
+  obstacleScore: number;
+}
+
+interface BoundingBox {
+  north: number;
+  south: number;
+  east: number;
+  west: number;
+}
+
+// OSM Node interfaces
+interface OsmNode {
+  id: number;
+  lat: number;
+  lon: number;
+  tags?: Record<string, string>;
+}
+
+interface OsmWay {
+  id: number;
+  nodes: number[];
+  tags: Record<string, string>;
+}
+
+interface OsmData {
+  nodes: Record<number, OsmNode>;
+  ways: OsmWay[];
+  relations?: Array<{
+    id: number;
+    members: Array<{
+      type: "node" | "way" | "relation";
+      ref: number;
+      role: string;
+    }>;
+    tags: Record<string, string>;
+  }>;
+}
+
+interface GridCell {
+  x: number;
+  y: number;
+  latitude: number;
+  longitude: number;
+  isRoad: boolean;
+  hasObstacle: boolean;
+  obstacleWeight: number;
+  connections: GridCell[];
+  parent?: GridCell | null;
+  f?: number; // Total cost for A*
+  g?: number; // Cost from start to current
+  h?: number; // Heuristic (estimated cost to goal)
+  wayId?: number; // Original OSM way ID if applicable
+  roadType?: string; // Type of road (footway, path, etc.)
+  oneway?: boolean; // Whether this is a one-way road
+}
+
+interface Grid {
+  cells: GridCell[][];
+  cellSize: number; // cell size in meters
+  bbox: BoundingBox;
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
 /**
  * Get or create an OSM graph for a specific region
  */
 async function getOrCreateGraph(
-  bbox: { north: number; south: number; east: number; west: number },
+  bbox: BoundingBox,
   networkType: string = DEFAULT_NETWORK_TYPE,
 ): Promise<string> {
   try {
@@ -92,8 +165,7 @@ async function getOrCreateGraph(
       return cachedGraph.graphData;
     }
 
-    // No cached graph found, create a new one using Python script with OSMNX
-    // For now, we'll return a placeholder
+    // No cached graph found, create a new one
     const graphData = JSON.stringify({
       placeholder:
         "This would be a serialized NetworkX graph in a real implementation",
@@ -135,10 +207,10 @@ async function getOrCreateGraph(
  * Calculate a bounding box around two points
  */
 function calculateBoundingBox(
-  point1: { latitude: number; longitude: number },
-  point2: { latitude: number; longitude: number },
+  point1: Point,
+  point2: Point,
   bufferInKm: number = GRAPH_BUFFER,
-): { north: number; south: number; east: number; west: number } {
+): BoundingBox {
   // Calculate the bounding box with buffer
   const lat1 = point1.latitude;
   const lon1 = point1.longitude;
@@ -169,7 +241,7 @@ function calculateBoundingBox(
  * Get obstacles within a bounding box
  */
 async function getObstaclesInBbox(
-  bbox: { north: number; south: number; east: number; west: number },
+  bbox: BoundingBox,
 ): Promise<any[]> {
   try {
     return await MarkerModel.find({
@@ -183,360 +255,33 @@ async function getObstaclesInBbox(
 }
 
 /**
- * Snap points to roads using Google Maps Roads API
- */
-async function snapToRoads(
-  points: Array<{ latitude: number; longitude: number }>,
-  interpolate: boolean = true,
-): Promise<Array<{ latitude: number; longitude: number }>> {
-  try {
-    // Don't process if we have too few points
-    if (points.length < 2) {
-      return points;
-    }
-
-    // Google Roads API has a limit of 100 points per request
-    const MAX_POINTS_PER_REQUEST = 100;
-    let allSnappedPoints: Array<{ latitude: number; longitude: number }> = [];
-
-    // Process points in chunks to respect the API limits
-    for (let i = 0; i < points.length; i += MAX_POINTS_PER_REQUEST - 1) {
-      const chunkEnd = Math.min(i + MAX_POINTS_PER_REQUEST, points.length);
-      const pointsChunk = points.slice(i, chunkEnd);
-
-      // If this isn't the first chunk, include the last point from the previous chunk
-      // to ensure continuity between chunks
-      if (i > 0 && allSnappedPoints.length > 0) {
-        pointsChunk.unshift(allSnappedPoints[allSnappedPoints.length - 1]);
-      }
-
-      // Format points for the Roads API
-      const pathParam = pointsChunk
-        .map((p) => `${p.latitude},${p.longitude}`)
-        .join("|");
-
-      const apiUrl =
-        `https://roads.googleapis.com/v1/snapToRoads?path=${pathParam}&interpolate=${interpolate}&key=${process.env.GOOGLE_MAPS_API_KEY}`;
-
-      console.log(`Snapping ${pointsChunk.length} points to roads`);
-      const response = await fetch(apiUrl);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Roads API error: ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-
-      if (!data.snappedPoints || !Array.isArray(data.snappedPoints)) {
-        throw new Error("Invalid response from Roads API");
-      }
-
-      const snappedPoints = data.snappedPoints.map((point: any) => ({
-        latitude: point.location.latitude,
-        longitude: point.location.longitude,
-      }));
-
-      // If this isn't the first chunk, skip the first point since it's a duplicate
-      const pointsToAdd = i > 0 ? snappedPoints.slice(1) : snappedPoints;
-      allSnappedPoints = [...allSnappedPoints, ...pointsToAdd];
-    }
-
-    console.log(
-      `Successfully snapped ${points.length} points to ${allSnappedPoints.length} road points`,
-    );
-    return allSnappedPoints;
-  } catch (error) {
-    console.error("Error in snapToRoads:", error);
-    // Fall back to original points if the API fails
-    console.log("Falling back to original points");
-    return points;
-  }
-}
-
-/**
- * Calculate an accessible route between two points
- */
-export async function findAccessibleRoute(
-  params: RoutingParams,
-): Promise<RoutingResult> {
-  try {
-    const { origin, destination, avoidObstacles = true } = params;
-
-    // Ensure Google Maps API key is configured
-    if (!process.env.GOOGLE_MAPS_API_KEY) {
-      console.error("Google Maps API key is not configured");
-      throw new Error("Google Maps API key is not configured");
-    }
-
-    // Calculate bounding box for the route
-    const bbox = calculateBoundingBox(origin, destination);
-
-    // Get obstacles within the bounding box if needed
-    let obstacles: any[] = [];
-    if (avoidObstacles) {
-      try {
-        obstacles = await getObstaclesInBbox(bbox);
-        console.log(`Found ${obstacles.length} obstacles in bounding box`);
-      } catch (obstaclesError) {
-        console.warn(
-          "Failed to get obstacles, continuing without them:",
-          obstaclesError,
-        );
-      }
-    }
-
-    try {
-      // Get a route from Google Maps API using Directions API
-      console.log(
-        `Requesting Google Maps directions from ${origin.latitude},${origin.longitude} to ${destination.latitude},${destination.longitude}`,
-      );
-
-      // Request detailed walkways and pedestrian paths by setting options appropriately
-      const apiUrl = `https://maps.googleapis.com/maps/api/directions/json` +
-        `?origin=${origin.latitude},${origin.longitude}` +
-        `&destination=${destination.latitude},${destination.longitude}` +
-        `&mode=walking` +
-        `&alternatives=true` + // Get alternative routes to choose the best one
-        `&units=metric` +
-        `&waypoints=optimize:true` + // Allow optimizing waypoints if needed
-        `&key=${process.env.GOOGLE_MAPS_API_KEY}`;
-
-      console.log("Requesting detailed route from Google Maps API");
-      const response = await fetch(apiUrl);
-
-      if (!response.ok) {
-        throw new Error(`Directions API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      if (data.status !== "OK" || !data.routes || data.routes.length === 0) {
-        throw new Error(`Directions API returned status: ${data.status}`);
-      }
-
-      // Select the best route - for accessible routing, we typically want
-      // the route with the most detailed waypoints for better road adherence
-      const allRoutes = data.routes;
-      let bestRoute = allRoutes[0]; // Default to first route
-      let bestRouteWithObstacles = true;
-
-      // Check which routes avoid obstacles
-      if (obstacles.length > 0) {
-        // For each route, check if it avoids obstacles
-        for (const route of allRoutes) {
-          // Extract points from the route's overview polyline
-          const routePoints = decodePolyline(route.overview_polyline.points)
-            .map(([lat, lng]) => ({ latitude: lat, longitude: lng }));
-
-          // Check if this route crosses any obstacles
-          const hasObstacles = checkForObstaclesNearRoute(
-            routePoints,
-            obstacles,
-          );
-
-          // If we find a route without obstacles, use it
-          if (!hasObstacles) {
-            bestRoute = route;
-            bestRouteWithObstacles = false;
-            console.log("Found a route that avoids all obstacles");
-            break;
-          }
-        }
-      }
-
-      // If all routes have obstacles, select the one with the most waypoints for better detail
-      if (bestRouteWithObstacles && allRoutes.length > 1) {
-        let maxWaypoints = 0;
-
-        for (const route of allRoutes) {
-          let waypointCount = 0;
-
-          // Count all steps in all legs as a proxy for route detail
-          for (const leg of route.legs) {
-            waypointCount += leg.steps.length;
-          }
-
-          if (waypointCount > maxWaypoints) {
-            maxWaypoints = waypointCount;
-            bestRoute = route;
-          }
-        }
-
-        console.log(
-          `Selected best route with ${maxWaypoints} waypoints from ${allRoutes.length} alternatives`,
-        );
-      }
-
-      const route = bestRoute;
-      const leg = route.legs[0];
-
-      // Extract ALL steps with detailed instructions
-      const steps = leg.steps.map((step: any) => ({
-        instructions: step.html_instructions,
-        distance: step.distance.text,
-        duration: step.duration.text,
-        startLocation: {
-          latitude: step.start_location.lat,
-          longitude: step.start_location.lng,
-        },
-        endLocation: {
-          latitude: step.end_location.lat,
-          longitude: step.end_location.lng,
-        },
-        polyline: step.polyline?.points || null,
-      }));
-
-      // We'll build a comprehensive array of points that precisely follow roads
-      let routePoints: Array<{ latitude: number; longitude: number }> = [];
-
-      // First, try to build points from the detailed step polylines
-      for (const step of steps) {
-        if (step.polyline) {
-          const stepPoints = decodePolyline(step.polyline)
-            .map(([lat, lng]) => ({ latitude: lat, longitude: lng }));
-
-          // Skip the first point of each step after the first step to avoid duplication
-          if (routePoints.length > 0 && stepPoints.length > 0) {
-            routePoints = [...routePoints, ...stepPoints.slice(1)];
-          } else {
-            routePoints = [...routePoints, ...stepPoints];
-          }
-        }
-      }
-
-      // If there aren't enough points from step polylines, use the overview polyline
-      if (routePoints.length < 5) {
-        console.log("Not enough points from steps, using overview polyline");
-        const overviewPoints = decodePolyline(route.overview_polyline.points)
-          .map(([lat, lng]) => ({ latitude: lat, longitude: lng }));
-
-        if (overviewPoints.length > routePoints.length) {
-          routePoints = overviewPoints;
-        }
-      }
-
-      // Make sure we have the exact origin and destination in the route
-      // Add origin if needed
-      if (
-        routePoints.length === 0 ||
-        routePoints[0].latitude !== origin.latitude ||
-        routePoints[0].longitude !== origin.longitude
-      ) {
-        routePoints.unshift(origin);
-      }
-
-      // Add destination if needed
-      if (
-        routePoints.length === 0 ||
-        routePoints[routePoints.length - 1].latitude !== destination.latitude ||
-        routePoints[routePoints.length - 1].longitude !== destination.longitude
-      ) {
-        routePoints.push(destination);
-      }
-
-      console.log(
-        `Generated route with ${routePoints.length} points that follow roads`,
-      );
-
-      // Get distance in kilometers and duration in minutes
-      const distance = leg.distance.value / 1000; // meters to kilometers
-      let duration = leg.duration.text;
-
-      // Check if the route has obstacles near it
-      const hasObstacles = checkForObstaclesNearRoute(routePoints, obstacles);
-
-      return {
-        points: routePoints,
-        distance: Number(distance.toFixed(2)),
-        duration: duration,
-        hasObstacles: hasObstacles,
-        steps: steps,
-      };
-    } catch (error) {
-      console.error("Error in Google Directions API request:", error);
-
-      // If the Google request fails, we'll fall back to a simple straight line
-      // but with some interpolated points to make it look more natural
-      console.warn("Falling back to straight line route");
-
-      // Calculate haversine distance between origin and destination
-      const distance = haversineDistanceInMeters(
-        origin.latitude,
-        origin.longitude,
-        destination.latitude,
-        destination.longitude,
-      ) / 1000; // Convert to kilometers
-
-      const estimatedMinutes = Math.round(distance * 15); // 15 minutes per km
-
-      // Create interpolated points to avoid the straight line appearance
-      const intermediatePoints = [];
-      for (let i = 1; i < 10; i++) {
-        const fraction = i / 10;
-        intermediatePoints.push({
-          latitude: origin.latitude +
-            (destination.latitude - origin.latitude) * fraction,
-          longitude: origin.longitude +
-            (destination.longitude - origin.longitude) * fraction,
-        });
-      }
-
-      const allPoints = [origin, ...intermediatePoints, destination];
-
-      return {
-        points: allPoints,
-        distance: Number(distance.toFixed(2)),
-        duration: `${estimatedMinutes} mins`,
-        hasObstacles: obstacles.length > 0,
-        steps: [
-          {
-            instructions: "Follow the accessible path.",
-            distance: `${distance.toFixed(2)} km`,
-            duration: `${estimatedMinutes} mins`,
-            startLocation: origin,
-            endLocation: destination,
-          },
-        ],
-      };
-    }
-  } catch (error) {
-    console.error("Error in findAccessibleRoute:", error);
-    throw new Error("Failed to get accessible route");
-  }
-}
-
-/**
- * Check if there are obstacles near the route points
+ * Check for obstacles near the route
  */
 function checkForObstaclesNearRoute(
-  routePoints: Array<{ latitude: number; longitude: number }>,
+  routePoints: Array<Point>,
   obstacles: any[],
   thresholdDistanceMeters: number = 20,
 ): boolean {
+  // No obstacles to check
   if (
     !obstacles || obstacles.length === 0 || !routePoints ||
     routePoints.length === 0
   ) {
-    console.log("No obstacles or route points to check");
     return false;
   }
 
-  console.log(
-    `Checking ${obstacles.length} obstacles against ${routePoints.length} route points`,
-  );
   let nearbyObstacles = 0;
 
+  // Check each obstacle against each point in the route
   for (const obstacle of obstacles) {
-    // Skip invalid obstacles
     if (
-      !obstacle.location || typeof obstacle.location.latitude !== "number" ||
-      typeof obstacle.location.longitude !== "number"
+      !obstacle.location || !obstacle.location.latitude ||
+      !obstacle.location.longitude
     ) {
-      console.warn("Found invalid obstacle without proper location data");
-      continue;
+      continue; // Skip invalid obstacles
     }
 
+    // Check against each point in the route
     for (const point of routePoints) {
       try {
         const distance = haversineDistanceInMeters(
@@ -591,41 +336,6 @@ export function haversineDistanceInMeters(
   return R * c;
 }
 
-// Function to decode Google's polyline format
-function decodePolyline(encoded: string): Array<[number, number]> {
-  const poly: Array<[number, number]> = [];
-  let index = 0, lat = 0, lng = 0;
-
-  while (index < encoded.length) {
-    let b, shift = 0, result = 0;
-
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-
-    const dlat = (result & 1) !== 0 ? ~(result >> 1) : (result >> 1);
-    lat += dlat;
-
-    shift = 0;
-    result = 0;
-
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-
-    const dlng = (result & 1) !== 0 ? ~(result >> 1) : (result >> 1);
-    lng += dlng;
-
-    poly.push([lat / 1e5, lng / 1e5]);
-  }
-
-  return poly;
-}
-
 /**
  * Clean up old graph cache entries
  * This should be run periodically
@@ -648,78 +358,10 @@ export async function cleanupGraphCache(
 }
 
 /**
- * Find an accessible route using OSM grid-based routing
- * This is an alternative to the Google-based routing
- */
-export async function findOsmBasedAccessibleRoute(
-  params: RoutingParams,
-): Promise<RoutingResult> {
-  try {
-    const { origin, destination, avoidObstacles = true } = params;
-
-    // Calculate bounding box for the route
-    const bbox = calculateBoundingBox(origin, destination);
-
-    // Get obstacles within the bounding box if needed
-    let obstacles: any[] = [];
-    if (avoidObstacles) {
-      try {
-        obstacles = await getObstaclesInBbox(bbox);
-        console.log(`Found ${obstacles.length} obstacles in bounding box`);
-      } catch (obstaclesError) {
-        console.warn(
-          "Failed to get obstacles, continuing without them:",
-          obstaclesError,
-        );
-      }
-    }
-
-    console.log("Using OSM grid-based routing for accessible path...");
-    const routePoints = await osmGridService.findOsmGridRoute(
-      origin,
-      destination,
-      obstacles,
-      10, // 10 meter cell size
-      1.0, // 1km buffer
-    );
-
-    // Calculate route statistics
-    const distance = calculateRouteDistance(routePoints) / 1000; // Convert to km
-    const estimatedMinutes = Math.round(distance * 15); // Approx. 15 min per km walking
-    const duration = `${estimatedMinutes} mins`;
-
-    // Check if there are obstacles near the route
-    const hasObstacles = checkForObstaclesNearRoute(routePoints, obstacles);
-
-    // Create basic step information
-    const steps = [{
-      instructions: "Follow the accessible path.",
-      distance: `${distance.toFixed(2)} km`,
-      duration: duration,
-      startLocation: origin,
-      endLocation: destination,
-    }];
-
-    return {
-      points: routePoints,
-      distance: Number(distance.toFixed(2)),
-      duration: duration,
-      hasObstacles: hasObstacles,
-      steps: steps,
-    };
-  } catch (error) {
-    console.error("Error in OSM grid routing:", error);
-
-    // Fall back to Google-based routing
-    return findAccessibleRoute(params);
-  }
-}
-
-/**
  * Calculate the total distance of a route in meters
  */
 function calculateRouteDistance(
-  points: Array<{ latitude: number; longitude: number }>,
+  points: Array<Point>,
 ): number {
   if (points.length < 2) return 0;
 
@@ -740,8 +382,1373 @@ function calculateRouteDistance(
   return totalDistance;
 }
 
+/**
+ * Fetch OSM data from Overpass API for a given bounding box
+ */
+async function fetchOsmData(bbox: BoundingBox): Promise<OsmData> {
+  try {
+    // Enhanced Overpass API query to get more detailed road information
+    const query = `
+      [out:json];
+      (
+        way["highway"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
+        way["footway"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
+        way["path"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
+        way["cycleway"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
+        way["pedestrian"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
+        way["steps"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
+        relation["route"="foot"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
+        relation["route"="hiking"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
+      );
+      (._;>;);
+      out body;
+    `;
+
+    console.log("Fetching OSM data from Overpass API...");
+    const response = await fetch("https://overpass-api.de/api/interpreter", {
+      method: "POST",
+      body: query,
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Overpass API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // Process the Overpass API result into our format
+    const nodes: Record<number, OsmNode> = {};
+    const ways: OsmWay[] = [];
+    const relations: Array<{
+      id: number;
+      members: Array<{
+        type: "node" | "way" | "relation";
+        ref: number;
+        role: string;
+      }>;
+      tags: Record<string, string>;
+    }> = [];
+
+    for (const element of data.elements) {
+      if (element.type === "node") {
+        nodes[element.id] = {
+          id: element.id,
+          lat: element.lat,
+          lon: element.lon,
+          tags: element.tags,
+        };
+      } else if (element.type === "way") {
+        // Check for all pedestrian-relevant tags
+        if (
+          element.tags &&
+          (element.tags.highway ||
+            element.tags.footway ||
+            element.tags.path ||
+            element.tags.cycleway ||
+            element.tags.pedestrian ||
+            element.tags.steps)
+        ) {
+          ways.push({
+            id: element.id,
+            nodes: element.nodes,
+            tags: element.tags,
+          });
+        }
+      } else if (element.type === "relation") {
+        if (
+          element.tags &&
+          (element.tags.route === "foot" ||
+            element.tags.route === "hiking")
+        ) {
+          relations.push({
+            id: element.id,
+            members: element.members,
+            tags: element.tags,
+          });
+        }
+      }
+    }
+
+    console.log(
+      `Processed ${
+        Object.keys(nodes).length
+      } nodes, ${ways.length} ways, and ${relations.length} relations`,
+    );
+    return { nodes, ways, relations };
+  } catch (error) {
+    console.error("Error fetching OSM data:", error);
+    // Return an empty dataset as fallback
+    return { nodes: {}, ways: [] };
+  }
+}
+
+/**
+ * Create a grid based on the bounding box and cell size
+ */
+function createGrid(bbox: BoundingBox, cellSize: number): Grid {
+  // Calculate the distance in meters
+  const distanceNS = haversineDistanceInMeters(
+    bbox.north,
+    (bbox.east + bbox.west) / 2,
+    bbox.south,
+    (bbox.east + bbox.west) / 2,
+  );
+
+  const distanceEW = haversineDistanceInMeters(
+    (bbox.north + bbox.south) / 2,
+    bbox.east,
+    (bbox.north + bbox.south) / 2,
+    bbox.west,
+  );
+
+  // Calculate the number of cells in each direction
+  const numCellsLat = Math.ceil(distanceNS / cellSize);
+  const numCellsLon = Math.ceil(distanceEW / cellSize);
+
+  // Initialize the grid with empty cells
+  const cells: GridCell[][] = [];
+  for (let y = 0; y < numCellsLat; y++) {
+    cells[y] = [];
+    for (let x = 0; x < numCellsLon; x++) {
+      // Calculate the coordinates of the cell center
+      const latRange = bbox.north - bbox.south;
+      const lonRange = bbox.east - bbox.west;
+      const latitude = bbox.north - (y + 0.5) / numCellsLat * latRange;
+      const longitude = bbox.west + (x + 0.5) / numCellsLon * lonRange;
+
+      cells[y][x] = {
+        x,
+        y,
+        latitude,
+        longitude,
+        isRoad: false,
+        hasObstacle: false,
+        obstacleWeight: 0,
+        connections: [],
+      };
+    }
+  }
+
+  return {
+    cells,
+    cellSize,
+    bbox,
+    minX: 0,
+    minY: 0,
+    maxX: numCellsLon - 1,
+    maxY: numCellsLat - 1,
+  };
+}
+
+/**
+ * Map OSM roads to the grid
+ */
+function mapRoadsToGrid(osmData: OsmData, grid: Grid): void {
+  console.log("Mapping OSM roads to grid...");
+
+  // Process each way (road) in the OSM data
+  for (const way of osmData.ways) {
+    // Skip if the way has fewer than 2 nodes
+    if (way.nodes.length < 2) continue;
+
+    // Get all the nodes for this way
+    const wayNodes = way.nodes
+      .filter((nodeId) => osmData.nodes[nodeId])
+      .map((nodeId) => osmData.nodes[nodeId]);
+
+    // Skip if we don't have enough valid nodes
+    if (wayNodes.length < 2) continue;
+
+    // Process each segment of the way
+    for (let i = 0; i < wayNodes.length - 1; i++) {
+      const node1 = wayNodes[i];
+      const node2 = wayNodes[i + 1];
+
+      // Skip invalid nodes
+      if (!node1 || !node2) continue;
+
+      // Rasterize the line segment onto the grid
+      rasterizeLine(node1.lat, node1.lon, node2.lat, node2.lon, grid, way);
+    }
+  }
+
+  console.log("Finished mapping roads to grid");
+}
+
+/**
+ * Rasterize a line segment onto the grid
+ */
+function rasterizeLine(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+  grid: Grid,
+  way: OsmWay,
+): void {
+  // Get grid coordinates for the start and end points
+  const start = getGridCoordinates(lat1, lon1, grid);
+  const end = getGridCoordinates(lat2, lon2, grid);
+
+  // Get the cells along the line using Bresenham's algorithm
+  const roadWidth = getRoadWidth(way);
+  const lineCells = bresenhamWideLine(
+    start.x,
+    start.y,
+    end.x,
+    end.y,
+    roadWidth,
+  );
+
+  // Mark each cell as a road and add the way ID and road type
+  for (const cell of lineCells) {
+    const { x, y } = cell;
+    if (x >= 0 && x <= grid.maxX && y >= 0 && y <= grid.maxY) {
+      grid.cells[y][x].isRoad = true;
+      grid.cells[y][x].wayId = way.id;
+
+      // Set road type
+      if (way.tags.highway) {
+        grid.cells[y][x].roadType = way.tags.highway;
+      } else if (way.tags.footway) {
+        grid.cells[y][x].roadType = "footway";
+      } else if (way.tags.path) {
+        grid.cells[y][x].roadType = "path";
+      } else if (way.tags.cycleway) {
+        grid.cells[y][x].roadType = "cycleway";
+      } else if (way.tags.pedestrian) {
+        grid.cells[y][x].roadType = "pedestrian";
+      } else {
+        grid.cells[y][x].roadType = "unknown";
+      }
+
+      // Check if the road is one-way
+      grid.cells[y][x].oneway = way.tags.oneway === "yes";
+    }
+  }
+}
+
+/**
+ * Convert lat/lon coordinates to grid coordinates
+ */
+function getGridCoordinates(
+  lat: number,
+  lon: number,
+  grid: Grid,
+): { x: number; y: number } {
+  const latRange = grid.bbox.north - grid.bbox.south;
+  const lonRange = grid.bbox.east - grid.bbox.west;
+
+  // Calculate the number of cells in each direction
+  const numCellsLat = Math.ceil(
+    haversineDistanceInMeters(
+      grid.bbox.north,
+      (grid.bbox.east + grid.bbox.west) / 2,
+      grid.bbox.south,
+      (grid.bbox.east + grid.bbox.west) / 2,
+    ) / grid.cellSize,
+  );
+
+  const numCellsLon = Math.ceil(
+    haversineDistanceInMeters(
+      (grid.bbox.north + grid.bbox.south) / 2,
+      grid.bbox.east,
+      (grid.bbox.north + grid.bbox.south) / 2,
+      grid.bbox.west,
+    ) / grid.cellSize,
+  );
+
+  // Calculate the grid coordinates
+  const x = Math.floor((lon - grid.bbox.west) / lonRange * numCellsLon);
+  const y = Math.floor((grid.bbox.north - lat) / latRange * numCellsLat);
+
+  return { x, y };
+}
+
+/**
+ * Draw a thick line using Bresenham's algorithm
+ */
+function bresenhamWideLine(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  width: number,
+): { x: number; y: number }[] {
+  // Get the basic line
+  const baseLine = bresenhamLine(x1, y1, x2, y2);
+
+  // If width is 1 or less, just return the base line
+  if (width <= 1) {
+    return baseLine;
+  }
+
+  // Calculate width on each side
+  const halfWidth = Math.max(1, Math.floor(width / 2));
+  const result: { x: number; y: number }[] = [...baseLine];
+
+  // Calculate the perpendicular direction
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.sqrt(dx * dx + dy * dy);
+
+  if (length === 0) return result;
+
+  const normalX = -dy / length;
+  const normalY = dx / length;
+
+  // Add parallel lines on each side
+  for (let w = 1; w <= halfWidth; w++) {
+    const offsetX = Math.round(normalX * w);
+    const offsetY = Math.round(normalY * w);
+
+    // Add a line above the base line
+    const above = bresenhamLine(
+      x1 + offsetX,
+      y1 + offsetY,
+      x2 + offsetX,
+      y2 + offsetY,
+    );
+
+    // Add a line below the base line
+    const below = bresenhamLine(
+      x1 - offsetX,
+      y1 - offsetY,
+      x2 - offsetX,
+      y2 - offsetY,
+    );
+
+    result.push(...above, ...below);
+  }
+
+  // Remove duplicates
+  const uniqueCells = new Map<string, { x: number; y: number }>();
+  for (const cell of result) {
+    const key = `${cell.x},${cell.y}`;
+    uniqueCells.set(key, cell);
+  }
+
+  return Array.from(uniqueCells.values());
+}
+
+/**
+ * Draw a line using Bresenham's algorithm
+ */
+function bresenhamLine(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): { x: number; y: number }[] {
+  const result: { x: number; y: number }[] = [];
+
+  const dx = Math.abs(x2 - x1);
+  const dy = Math.abs(y2 - y1);
+  const sx = x1 < x2 ? 1 : -1;
+  const sy = y1 < y2 ? 1 : -1;
+
+  let err = dx - dy;
+  let x = x1;
+  let y = y1;
+
+  while (true) {
+    result.push({ x, y });
+
+    if (x === x2 && y === y2) break;
+
+    const e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y += sy;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Determine the road width in grid cells based on OSM way tags
+ */
+function getRoadWidth(way: OsmWay): number {
+  const tags = way.tags;
+
+  // Default width (in grid cells)
+  let width = 1;
+
+  // Adjust width based on road type
+  if (tags.highway) {
+    switch (tags.highway) {
+      case "motorway":
+      case "trunk":
+      case "primary":
+        width = 4;
+        break;
+      case "secondary":
+        width = 3;
+        break;
+      case "tertiary":
+      case "residential":
+      case "unclassified":
+        width = 2;
+        break;
+      case "footway":
+      case "path":
+      case "track":
+      case "steps":
+        width = 1;
+        break;
+      default:
+        width = 1;
+    }
+  }
+
+  // Check if there's an explicit width tag
+  if (tags.width && !isNaN(parseFloat(tags.width))) {
+    const explicitWidth = parseFloat(tags.width);
+    // Convert meters to grid cells (approximately)
+    width = Math.max(1, Math.round(explicitWidth));
+  }
+
+  return width;
+}
+
+/**
+ * Connect adjacent road cells in the grid to create the navigation graph
+ */
+function connectRoadCells(grid: Grid): void {
+  console.log("Connecting road cells...");
+
+  // Define neighbor directions (8-way connectivity)
+  const directions = [
+    { dx: 1, dy: 0 }, // right
+    { dx: 1, dy: 1 }, // bottom-right
+    { dx: 0, dy: 1 }, // bottom
+    { dx: -1, dy: 1 }, // bottom-left
+    { dx: -1, dy: 0 }, // left
+    { dx: -1, dy: -1 }, // top-left
+    { dx: 0, dy: -1 }, // top
+    { dx: 1, dy: -1 }, // top-right
+  ];
+
+  // Connect each road cell to its neighboring road cells
+  for (let y = 0; y <= grid.maxY; y++) {
+    for (let x = 0; x <= grid.maxX; x++) {
+      const cell = grid.cells[y][x];
+
+      // Skip non-road cells
+      if (!cell.isRoad) continue;
+
+      // Clear any previous connections
+      cell.connections = [];
+
+      // Connect to neighboring road cells
+      for (const dir of directions) {
+        const nx = x + dir.dx;
+        const ny = y + dir.dy;
+
+        // Check if neighbor is within bounds
+        if (nx >= 0 && nx <= grid.maxX && ny >= 0 && ny <= grid.maxY) {
+          const neighbor = grid.cells[ny][nx];
+
+          // Only connect to other road cells
+          if (neighbor.isRoad) {
+            cell.connections.push(neighbor);
+          }
+        }
+      }
+    }
+  }
+
+  console.log("Finished connecting road cells");
+}
+
+/**
+ * Apply obstacles to the grid, increasing the weight of cells near obstacles
+ */
+function applyObstaclesToGrid(
+  grid: Grid,
+  obstacles: any[],
+  proximityThreshold: number = 20, // meters
+): void {
+  if (!obstacles || obstacles.length === 0) return;
+
+  console.log(`Applying ${obstacles.length} obstacles to grid...`);
+
+  for (const obstacle of obstacles) {
+    if (
+      !obstacle.location || !obstacle.location.latitude ||
+      !obstacle.location.longitude
+    ) {
+      continue;
+    }
+
+    // Get the obstacle type and score
+    const obstacleType = obstacle.obstacleType || "OTHER";
+    // Use type assertion to fix TypeScript error
+    const obstacleScore = obstacle.obstacleScore ||
+      (OBSTACLE_WEIGHTS[obstacleType as keyof typeof OBSTACLE_WEIGHTS] ||
+        OBSTACLE_WEIGHTS.OTHER);
+
+    // Get the grid coordinates for the obstacle
+    const obsCoords = getGridCoordinates(
+      obstacle.location.latitude,
+      obstacle.location.longitude,
+      grid,
+    );
+
+    // Define the radius of influence in grid cells
+    // Based on the proximity threshold and cell size
+    const influenceRadius = Math.ceil(proximityThreshold / grid.cellSize);
+
+    // Apply obstacle weight to nearby cells with exponential decay
+    for (let dy = -influenceRadius; dy <= influenceRadius; dy++) {
+      for (let dx = -influenceRadius; dx <= influenceRadius; dx++) {
+        const x = obsCoords.x + dx;
+        const y = obsCoords.y + dy;
+
+        // Skip if outside grid bounds
+        if (x < 0 || x > grid.maxX || y < 0 || y > grid.maxY) continue;
+
+        const cell = grid.cells[y][x];
+
+        // Calculate distance from obstacle (in grid cells)
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // Skip if outside influence radius
+        if (distance > influenceRadius) continue;
+
+        // Calculate weight based on distance (higher weight = more difficult)
+        // Use exponential decay: weight decreases as distance increases
+        const distanceRatio = 1 - (distance / influenceRadius);
+        const weightContribution = obstacleScore * Math.pow(distanceRatio, 2);
+
+        // Apply the obstacle weight
+        cell.obstacleWeight += weightContribution;
+
+        // Mark as having an obstacle if very close
+        if (distance <= 1) {
+          cell.hasObstacle = true;
+        }
+      }
+    }
+  }
+
+  console.log("Finished applying obstacles to grid");
+}
+
+/**
+ * Find the nearest road cell to a given point
+ */
+function findNearestRoadCell(grid: Grid, point: Point): GridCell | null {
+  // Get the grid coordinates for the point
+  const coords = getGridCoordinates(point.latitude, point.longitude, grid);
+
+  // Search for the nearest road cell in increasing radius
+  const maxSearchRadius = Math.max(grid.maxX, grid.maxY);
+
+  for (let radius = 0; radius <= maxSearchRadius; radius++) {
+    // Search in a square pattern around the point
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        // Only check cells at the current radius (perimeter)
+        if (Math.abs(dx) < radius && Math.abs(dy) < radius) continue;
+
+        const x = coords.x + dx;
+        const y = coords.y + dy;
+
+        // Check if within grid bounds
+        if (x < 0 || x > grid.maxX || y < 0 || y > grid.maxY) continue;
+
+        // Check if this is a road cell
+        if (grid.cells[y][x].isRoad) {
+          return grid.cells[y][x];
+        }
+      }
+    }
+  }
+
+  // No road cell found within the maximum search radius
+  return null;
+}
+
+/**
+ * A* pathfinding algorithm
+ */
+function findPathAStar(
+  grid: Grid,
+  start: GridCell,
+  goal: GridCell,
+): GridCell[] {
+  console.log(
+    `Finding path from (${start.x},${start.y}) to (${goal.x},${goal.y})`,
+  );
+
+  // Create open and closed sets
+  const openSet: GridCell[] = [start];
+  const closedSet = new Set<string>();
+
+  // Initialize start node
+  start.g = 0;
+  start.h = heuristic(start, goal);
+  start.f = start.g + start.h;
+  start.parent = null;
+
+  while (openSet.length > 0) {
+    // Find the node with the lowest f value
+    let current = openSet[0];
+    let currentIndex = 0;
+
+    for (let i = 1; i < openSet.length; i++) {
+      if ((openSet[i].f || Infinity) < (current.f || Infinity)) {
+        current = openSet[i];
+        currentIndex = i;
+      }
+    }
+
+    // If we reached the goal, reconstruct and return the path
+    if (current === goal) {
+      console.log("Path found!");
+      return reconstructPath(goal);
+    }
+
+    // Move current from open to closed set
+    openSet.splice(currentIndex, 1);
+    closedSet.add(`${current.x},${current.y}`);
+
+    // Check all connections (neighbors)
+    for (const neighbor of current.connections) {
+      // Skip if neighbor is in closed set
+      if (closedSet.has(`${neighbor.x},${neighbor.y}`)) continue;
+
+      // Calculate tentative g score
+      const weight = 1 + (neighbor.obstacleWeight || 0);
+      const tentativeG = (current.g || 0) + weight;
+
+      // Check if neighbor is already in open set
+      const neighborInOpenSet = openSet.find(
+        (cell) => cell.x === neighbor.x && cell.y === neighbor.y,
+      );
+
+      if (!neighborInOpenSet) {
+        // New node, add to open set
+        neighbor.parent = current;
+        neighbor.g = tentativeG;
+        neighbor.h = heuristic(neighbor, goal);
+        neighbor.f = neighbor.g + neighbor.h;
+        openSet.push(neighbor);
+      } else if (tentativeG < (neighborInOpenSet.g || Infinity)) {
+        // This path is better than previous one
+        neighborInOpenSet.parent = current;
+        neighborInOpenSet.g = tentativeG;
+        neighborInOpenSet.f = tentativeG + (neighborInOpenSet.h || 0);
+      }
+    }
+  }
+
+  // No path found
+  console.log("No path found!");
+  return [];
+}
+
+/**
+ * Heuristic function for A* (Euclidean distance)
+ */
+function heuristic(a: GridCell, b: GridCell): number {
+  // Use Euclidean distance as heuristic
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+/**
+ * Reconstruct the path from goal to start
+ */
+function reconstructPath(goal: GridCell): GridCell[] {
+  const path: GridCell[] = [];
+  let current: GridCell | null | undefined = goal;
+
+  while (current) {
+    path.unshift(current);
+    current = current.parent;
+  }
+
+  return path;
+}
+
+/**
+ * Convert grid path to precise route that follows actual OSM ways
+ */
+function snapRouteToRoads(
+  gridPath: GridCell[],
+  osmData: OsmData,
+): Point[] {
+  if (gridPath.length < 2) {
+    return gridPath.map((cell) => ({
+      latitude: cell.latitude,
+      longitude: cell.longitude,
+    }));
+  }
+
+  console.log("Snapping route to actual OSM roads...");
+
+  // Convert grid cells to points
+  const routePoints: Point[] = [];
+
+  // Process each segment of the grid path
+  for (let i = 0; i < gridPath.length - 1; i++) {
+    const cellA = gridPath[i];
+    const cellB = gridPath[i + 1];
+
+    // Find the best matching OSM way for this grid segment
+    const segmentWays = findSegmentOsmWays(
+      { latitude: cellA.latitude, longitude: cellA.longitude },
+      { latitude: cellB.latitude, longitude: cellB.longitude },
+      osmData,
+      20, // Maximum search distance in meters
+    );
+
+    if (segmentWays.length > 0) {
+      // Get the nodes of the best matching way
+      const wayPoints = getWayPoints(segmentWays[0], osmData);
+
+      // If this isn't the first segment, skip the first way point to avoid duplicates
+      if (i > 0 && wayPoints.length > 0) {
+        routePoints.push(...wayPoints.slice(1));
+      } else {
+        routePoints.push(...wayPoints);
+      }
+    } else {
+      // No matching way found, use the grid cell coordinates
+      if (i === 0 || routePoints.length === 0) {
+        routePoints.push({
+          latitude: cellA.latitude,
+          longitude: cellA.longitude,
+        });
+      }
+
+      routePoints.push({
+        latitude: cellB.latitude,
+        longitude: cellB.longitude,
+      });
+    }
+  }
+
+  return routePoints;
+}
+
+/**
+ * Find OSM ways that match a route segment
+ */
+function findSegmentOsmWays(
+  pointA: Point,
+  pointB: Point,
+  osmData: OsmData,
+  maxDistanceMeters: number = 20,
+): OsmWay[] {
+  const matchingWays: OsmWay[] = [];
+
+  // Calculate midpoint of the segment for searching
+  const midLat = (pointA.latitude + pointB.latitude) / 2;
+  const midLon = (pointA.longitude + pointB.longitude) / 2;
+
+  // Calculate segment length and direction
+  const segmentLength = haversineDistanceInMeters(
+    pointA.latitude,
+    pointA.longitude,
+    pointB.latitude,
+    pointB.longitude,
+  );
+
+  // Skip very short segments
+  if (segmentLength < 1) return matchingWays;
+
+  // Check each way
+  for (const way of osmData.ways) {
+    // Skip ways with too few nodes
+    if (way.nodes.length < 2) continue;
+
+    let minDistance = Infinity;
+
+    // Check distance from each way segment to our midpoint
+    for (let i = 0; i < way.nodes.length - 1; i++) {
+      const nodeId1 = way.nodes[i];
+      const nodeId2 = way.nodes[i + 1];
+
+      const node1 = osmData.nodes[nodeId1];
+      const node2 = osmData.nodes[nodeId2];
+
+      if (!node1 || !node2) continue;
+
+      // Calculate the distance from the midpoint to this way segment
+      const distance = distanceToSegment(
+        midLat,
+        midLon,
+        node1.lat,
+        node1.lon,
+        node2.lat,
+        node2.lon,
+      );
+
+      if (distance < minDistance) {
+        minDistance = distance;
+      }
+    }
+
+    // If this way is close enough to our segment, include it
+    if (minDistance <= maxDistanceMeters) {
+      matchingWays.push(way);
+    }
+  }
+
+  // Sort ways by relevance (pedestrian ways first, then by distance)
+  return matchingWays.sort((a, b) => {
+    // Prioritize pedestrian ways
+    const aIsPedestrian = isPedestrianWay(a);
+    const bIsPedestrian = isPedestrianWay(b);
+
+    if (aIsPedestrian && !bIsPedestrian) return -1;
+    if (!aIsPedestrian && bIsPedestrian) return 1;
+
+    // If both are the same type, sort by distance
+    return 0;
+  });
+}
+
+/**
+ * Check if a way is suitable for pedestrians
+ */
+function isPedestrianWay(way: OsmWay): boolean {
+  const tags = way.tags;
+
+  // Explicitly pedestrian-oriented ways
+  if (
+    tags.highway === "footway" ||
+    tags.highway === "path" ||
+    tags.highway === "pedestrian" ||
+    tags.footway ||
+    tags.path ||
+    tags.pedestrian
+  ) {
+    return true;
+  }
+
+  // Residential streets and other walkable roads
+  if (
+    tags.highway === "residential" ||
+    tags.highway === "living_street" ||
+    tags.highway === "service" ||
+    tags.highway === "track"
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Get the points for a way
+ */
+function getWayPoints(way: OsmWay, osmData: OsmData): Point[] {
+  const points: Point[] = [];
+
+  for (const nodeId of way.nodes) {
+    const node = osmData.nodes[nodeId];
+    if (node) {
+      points.push({
+        latitude: node.lat,
+        longitude: node.lon,
+      });
+    }
+  }
+
+  return points;
+}
+
+/**
+ * Calculate the distance from a point to a line segment
+ */
+function distanceToSegment(
+  pointLat: number,
+  pointLon: number,
+  startLat: number,
+  startLon: number,
+  endLat: number,
+  endLon: number,
+): number {
+  // For very short segments, just return distance to start point
+  if (startLat === endLat && startLon === endLon) {
+    return haversineDistanceInMeters(pointLat, pointLon, startLat, startLon);
+  }
+
+  // Calculate projection of point onto line segment
+  const dx = endLat - startLat;
+  const dy = endLon - startLon;
+
+  const t = ((pointLat - startLat) * dx + (pointLon - startLon) * dy) /
+    (dx * dx + dy * dy);
+
+  // If projection is outside the segment, return distance to nearest endpoint
+  if (t < 0) {
+    return haversineDistanceInMeters(pointLat, pointLon, startLat, startLon);
+  }
+  if (t > 1) {
+    return haversineDistanceInMeters(pointLat, pointLon, endLat, endLon);
+  }
+
+  // Calculate the projected point
+  const projLat = startLat + t * dx;
+  const projLon = startLon + t * dy;
+
+  // Return distance to projected point
+  return haversineDistanceInMeters(pointLat, pointLon, projLat, projLon);
+}
+
+/**
+ * Apply final post-processing to ensure route follows roads precisely
+ */
+function postProcessRoute(routePoints: Point[], osmData: OsmData): Point[] {
+  console.log("Post-processing route for maximum precision...");
+
+  if (routePoints.length < 2) return routePoints;
+
+  // Remove duplicate consecutive points
+  let processedPoints = removeDuplicatePoints(routePoints);
+
+  // For each point, find the nearest OSM node or way point
+  for (let i = 0; i < processedPoints.length; i++) {
+    const point = processedPoints[i];
+
+    // Don't snap the very first and last points
+    if (i === 0 || i === processedPoints.length - 1) continue;
+
+    // Find the nearest OSM node within 15 meters
+    const nearestNode = findNearestOsmNode(point, osmData, 15);
+
+    if (nearestNode) {
+      // Replace the point with the precise OSM node location
+      processedPoints[i] = {
+        latitude: nearestNode.lat,
+        longitude: nearestNode.lon,
+      };
+    } else {
+      // If no node is found, try to snap to the nearest way
+      const snapResult = snapPointToNearestWay(point, osmData, 20);
+
+      if (snapResult) {
+        processedPoints[i] = snapResult;
+      }
+    }
+  }
+
+  return processedPoints;
+}
+
+/**
+ * Find the nearest OSM node to a point
+ */
+function findNearestOsmNode(
+  point: Point,
+  osmData: OsmData,
+  maxDistanceMeters: number,
+): OsmNode | null {
+  let nearestNode: OsmNode | null = null;
+  let minDistance = maxDistanceMeters;
+
+  // Check each node
+  for (const nodeId in osmData.nodes) {
+    const node = osmData.nodes[nodeId];
+
+    const distance = haversineDistanceInMeters(
+      point.latitude,
+      point.longitude,
+      node.lat,
+      node.lon,
+    );
+
+    if (distance < minDistance) {
+      minDistance = distance;
+      nearestNode = node;
+    }
+  }
+
+  return nearestNode;
+}
+
+/**
+ * Snap a point to the nearest OSM way
+ */
+function snapPointToNearestWay(
+  point: Point,
+  osmData: OsmData,
+  maxDistanceMeters: number,
+): Point | null {
+  let minDistance = maxDistanceMeters;
+  let bestProjection: Point | null = null;
+
+  // Check each way
+  for (const way of osmData.ways) {
+    if (way.nodes.length < 2) continue;
+
+    // Check each segment of the way
+    for (let i = 0; i < way.nodes.length - 1; i++) {
+      const node1 = osmData.nodes[way.nodes[i]];
+      const node2 = osmData.nodes[way.nodes[i + 1]];
+
+      if (!node1 || !node2) continue;
+
+      // Calculate the projection of the point onto this segment
+      const dx = node2.lat - node1.lat;
+      const dy = node2.lon - node1.lon;
+
+      const t = ((point.latitude - node1.lat) * dx +
+        (point.longitude - node1.lon) * dy) /
+        (dx * dx + dy * dy);
+
+      // Clamp t to the segment bounds
+      const clampedT = Math.max(0, Math.min(1, t));
+
+      // Calculate the projected point
+      const projLat = node1.lat + clampedT * dx;
+      const projLon = node1.lon + clampedT * dy;
+
+      // Calculate the distance to the projected point
+      const distance = haversineDistanceInMeters(
+        point.latitude,
+        point.longitude,
+        projLat,
+        projLon,
+      );
+
+      // Update if this is the closest projection so far
+      if (distance < minDistance) {
+        minDistance = distance;
+        bestProjection = {
+          latitude: projLat,
+          longitude: projLon,
+        };
+      }
+    }
+  }
+
+  return bestProjection;
+}
+
+/**
+ * Remove duplicate consecutive points in a route
+ */
+function removeDuplicatePoints(points: Point[]): Point[] {
+  if (points.length <= 1) return points;
+
+  const result: Point[] = [points[0]];
+
+  for (let i = 1; i < points.length; i++) {
+    const prev = result[result.length - 1];
+    const curr = points[i];
+
+    // Check if this point is identical or very close to the previous one
+    const distance = haversineDistanceInMeters(
+      prev.latitude,
+      prev.longitude,
+      curr.latitude,
+      curr.longitude,
+    );
+
+    // Only add if the point is at least 1 meter away from the previous one
+    if (distance >= 1) {
+      result.push(curr);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Smooth and simplify the path with high precision
+ */
+function smoothPath(gridPath: GridCell[]): Point[] {
+  if (gridPath.length < 2) {
+    return gridPath.map((cell) => ({
+      latitude: cell.latitude,
+      longitude: cell.longitude,
+    }));
+  }
+
+  // Convert grid cells to points
+  const points = gridPath.map((cell) => ({
+    latitude: cell.latitude,
+    longitude: cell.longitude,
+  }));
+
+  // Use a much smaller epsilon value (1-2 meters) for better precision
+  return douglasPeuckerSimplify(points, 2); // 2 meters tolerance
+}
+
+/**
+ * Douglas-Peucker algorithm for path simplification with improved precision
+ */
+function douglasPeuckerSimplify(points: Point[], epsilon: number): Point[] {
+  if (points.length <= 2) {
+    return points;
+  }
+
+  // Find the point with the maximum distance
+  let maxDistance = 0;
+  let maxIndex = 0;
+
+  const firstPoint = points[0];
+  const lastPoint = points[points.length - 1];
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const distance = perpendicularDistance(points[i], firstPoint, lastPoint);
+
+    if (distance > maxDistance) {
+      maxDistance = distance;
+      maxIndex = i;
+    }
+  }
+
+  // If max distance is greater than epsilon, recursively simplify
+  if (maxDistance > epsilon) {
+    // Recursive case
+    const firstPart = douglasPeuckerSimplify(
+      points.slice(0, maxIndex + 1),
+      epsilon,
+    );
+    const secondPart = douglasPeuckerSimplify(
+      points.slice(maxIndex),
+      epsilon,
+    );
+
+    // Concatenate the two parts, removing the duplicate point
+    return [...firstPart.slice(0, -1), ...secondPart];
+  } else {
+    // Base case
+    return [firstPoint, lastPoint];
+  }
+}
+
+/**
+ * Calculate perpendicular distance from a point to a line segment
+ */
+function perpendicularDistance(
+  point: Point,
+  lineStart: Point,
+  lineEnd: Point,
+): number {
+  // Convert to meters first
+  const p1Lat = lineStart.latitude;
+  const p1Lon = lineStart.longitude;
+  const p2Lat = lineEnd.latitude;
+  const p2Lon = lineEnd.longitude;
+  const pLat = point.latitude;
+  const pLon = point.longitude;
+
+  // Handle case where line start and end are the same point
+  if (p1Lat === p2Lat && p1Lon === p2Lon) {
+    return haversineDistanceInMeters(p1Lat, p1Lon, pLat, pLon);
+  }
+
+  // Calculate distances
+  const lineLength = haversineDistanceInMeters(p1Lat, p1Lon, p2Lat, p2Lon);
+
+  // Project the point onto the line segment
+  // First, calculate the projection ratio
+  const dx = p2Lat - p1Lat;
+  const dy = p2Lon - p1Lon;
+
+  // Calculate dot product for projection
+  const t = ((pLat - p1Lat) * dx + (pLon - p1Lon) * dy) / (dx * dx + dy * dy);
+
+  // Clamp to line segment
+  const clampedT = Math.max(0, Math.min(1, t));
+
+  // Calculate the projected point
+  const projectedLat = p1Lat + clampedT * dx;
+  const projectedLon = p1Lon + clampedT * dy;
+
+  // Return the distance to the projected point
+  return haversineDistanceInMeters(pLat, pLon, projectedLat, projectedLon);
+}
+
+/**
+ * Find an accessible route
+ */
+export async function findAccessibleRoute(
+  params: RoutingParams,
+): Promise<RoutingResult> {
+  try {
+    const { origin, destination, avoidObstacles = true, userPreferences } =
+      params;
+
+    // Validate input parameters to prevent undefined values
+    if (
+      !origin || typeof origin.latitude !== "number" ||
+      typeof origin.longitude !== "number" ||
+      !destination || typeof destination.latitude !== "number" ||
+      typeof destination.longitude !== "number"
+    ) {
+      throw new Error("Invalid origin or destination coordinates");
+    }
+
+    // Calculate bounding box for the route
+    const bbox = calculateBoundingBox(origin, destination);
+
+    // Check if route distance is too large (over MAX_GRAPH_SIZE)
+    const routeDistanceKm = haversineDistanceInMeters(
+      origin.latitude,
+      origin.longitude,
+      destination.latitude,
+      destination.longitude,
+    ) / 1000;
+
+    if (routeDistanceKm > MAX_GRAPH_SIZE) {
+      console.error(
+        `Route distance ${
+          routeDistanceKm.toFixed(2)
+        }km exceeds maximum supported size of ${MAX_GRAPH_SIZE}km`,
+      );
+      throw new Error(
+        `Route too long: ${
+          routeDistanceKm.toFixed(2)
+        }km exceeds maximum supported size`,
+      );
+    }
+
+    // Get obstacles within the bounding box if needed
+    let obstacles: any[] = [];
+    if (avoidObstacles) {
+      try {
+        obstacles = await getObstaclesInBbox(bbox);
+        console.log(`Found ${obstacles.length} obstacles in bounding box`);
+      } catch (obstaclesError) {
+        console.warn(
+          "Failed to get obstacles, continuing without them:",
+          obstaclesError,
+        );
+      }
+    }
+
+    console.log("Using OSM grid-based routing for accessible path...");
+
+    // Fetch OSM data for the bounding box
+    const osmData = await fetchOsmData(bbox);
+
+    // Validate OSM data - make sure we have at least some ways/nodes
+    if (
+      !osmData.ways || osmData.ways.length === 0 ||
+      Object.keys(osmData.nodes).length === 0
+    ) {
+      console.error("Insufficient OSM data retrieved for routing");
+      throw new Error("Could not retrieve sufficient map data for routing");
+    }
+
+    // Try cell sizes from most precise to least
+    const cellSizes = [2, 4, 8, 15]; // meters
+    let lastError = null;
+    for (const cellSize of cellSizes) {
+      try {
+        console.log(`Trying grid cell size: ${cellSize}m`);
+        const grid = createGrid(bbox, cellSize);
+        mapRoadsToGrid(osmData, grid);
+        connectRoadCells(grid);
+        if (avoidObstacles && obstacles.length > 0) {
+          applyObstaclesToGrid(grid, obstacles);
+        }
+        const startCell = findNearestRoadCell(grid, origin);
+        const goalCell = findNearestRoadCell(grid, destination);
+        if (!startCell || !goalCell) {
+          throw new Error("No accessible roads near the origin or destination");
+        }
+        const gridPath = findPathAStar(grid, startCell, goalCell);
+        if (gridPath.length === 0) {
+          throw new Error("Could not find an accessible route");
+        }
+        let routePoints = smoothPath(gridPath);
+        routePoints = snapRouteToRoads(gridPath, osmData);
+        routePoints = postProcessRoute(routePoints, osmData);
+        if (routePoints.length < 3) {
+          throw new Error(
+            "Could not generate a valid route with sufficient detail",
+          );
+        }
+        // Remove points very close to origin/destination
+        if (
+          routePoints.length > 0 &&
+          haversineDistanceInMeters(
+              routePoints[0].latitude,
+              routePoints[0].longitude,
+              origin.latitude,
+              origin.longitude,
+            ) < 10
+        ) {
+          routePoints.shift();
+        }
+        if (
+          routePoints.length > 0 &&
+          haversineDistanceInMeters(
+              routePoints[routePoints.length - 1].latitude,
+              routePoints[routePoints.length - 1].longitude,
+              destination.latitude,
+              destination.longitude,
+            ) < 10
+        ) {
+          routePoints.pop();
+        }
+        routePoints.unshift(origin);
+        routePoints.push(destination);
+        const finalDistance = calculateRouteDistance(routePoints) / 1000;
+        const directDistance = routeDistanceKm;
+        const routeDeviation = finalDistance / directDistance;
+        // If the route is less than 5% longer than a straight line, it's likely not following roads properly
+        if (routeDeviation < 1.05 && finalDistance > 0.1) {
+          throw new Error("Generated route does not follow roads properly");
+        }
+        // If the route is more than 2x the straight line, it's likely a bad route
+        if (routeDeviation > 2.0 && finalDistance > 0.5) {
+          throw new Error("OSM route is much longer than direct path");
+        }
+        const estimatedMinutes = Math.round(finalDistance * 15);
+        const duration = `${estimatedMinutes} mins`;
+        const hasObstacles = checkForObstaclesNearRoute(routePoints, obstacles);
+        const steps = [{
+          instructions: "Follow the accessible path.",
+          distance: `${finalDistance.toFixed(2)} km`,
+          duration: duration,
+          startLocation: origin,
+          endLocation: destination,
+        }];
+        return {
+          points: routePoints,
+          distance: Number(finalDistance.toFixed(2)),
+          duration: duration,
+          hasObstacles: hasObstacles,
+          steps: steps,
+        };
+      } catch (err) {
+        lastError = err;
+        console.warn(`Routing failed with cell size ${cellSize}m:`, err);
+        // Try next cell size
+      }
+    }
+    // If all cell sizes fail, throw the last error
+    throw lastError || new Error("Could not find a valid accessible route");
+  } catch (err: unknown) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    console.error("Error in OSM grid routing:", error);
+    throw new Error(
+      `Accessible routing failed: ${error.message || "Unknown error"}`,
+    );
+  }
+}
+
 export default {
   findAccessibleRoute,
   cleanupGraphCache,
-  findOsmBasedAccessibleRoute,
 };

@@ -17,7 +17,6 @@ export async function findAccessibleRoute(ctx: Context) {
       return;
     }
 
-    // Use the correct body parsing approach for Oak v17.1.4
     const body = await ctx.request.body.json();
     const {
       origin,
@@ -51,11 +50,10 @@ export async function findAccessibleRoute(ctx: Context) {
       return;
     }
 
-    // Always use OSM routing by default or when explicitly requested
     let routeResult;
     try {
       console.log("Attempting OSM grid-based routing...");
-      routeResult = await graphService.findOsmBasedAccessibleRoute({
+      routeResult = await graphService.findAccessibleRoute({
         origin,
         destination,
         avoidObstacles: avoidObstacles !== false, // Default to true
@@ -67,25 +65,7 @@ export async function findAccessibleRoute(ctx: Context) {
         "OSM grid-based routing failed:",
         osmError,
       );
-
-      // Only fall back to Google Directions API if useOsmRouting is not true
-      if (useOsmRouting === true) {
-        console.error(
-          "Not falling back to Google Directions API as useOsmRouting is true",
-        );
-        throw new Error(
-          "OSM grid-based routing failed and fallback is disabled",
-        );
-      }
-
-      console.log("Falling back to Google Directions API");
-      routeResult = await graphService.findAccessibleRoute({
-        origin,
-        destination,
-        avoidObstacles: avoidObstacles !== false, // Default to true
-        userPreferences,
-      });
-      console.log("Google Directions API fallback succeeded");
+      throw new Error("Failed to calculate accessible route");
     }
 
     // Ensure the result has the expected structure

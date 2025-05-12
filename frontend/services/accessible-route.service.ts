@@ -16,7 +16,6 @@ interface Point {
 interface RoutingParams {
     origin: Point;
     destination: Point;
-    avoidObstacles?: boolean;
     userPreferences?: {
         avoidStairs?: boolean;
         maxSlope?: number;
@@ -90,118 +89,121 @@ export async function getAccessibleRoute(
                 }
             }
 
-            // Ensure the data has the expected structure
-            if (!routeData.points) {
-                console.warn(
-                    "Backend response missing points array, initializing empty array",
-                );
-                routeData.points = [];
+            // Check for specific error responses from the backend
+            if (routeData.error) {
+                console.error("Backend returned an error:", routeData.error);
+                throw new Error(routeData.error);
             }
 
-            // Ensure hasObstacles property exists
-            if (routeData.hasObstacles === undefined) {
+            // Ensure the data has the expected structure
+            if (!routeData.points || !Array.isArray(routeData.points)) {
                 console.warn(
-                    "Backend response missing hasObstacles property, setting default",
+                    "Backend response missing valid points array",
                 );
-                routeData.hasObstacles = false;
+                throw new Error("Invalid route data: Missing points array");
             }
 
             // Validate the points array to ensure it only contains valid coordinates
-            if (routeData.points && Array.isArray(routeData.points)) {
-                routeData.points = routeData.points.filter((point: any) =>
-                    point &&
-                    typeof point.latitude === "number" &&
-                    typeof point.longitude === "number" &&
-                    !isNaN(point.latitude) &&
-                    !isNaN(point.longitude)
-                );
+            const validPoints = routeData.points.filter((point: any) =>
+                point &&
+                typeof point.latitude === "number" &&
+                typeof point.longitude === "number" &&
+                !isNaN(point.latitude) &&
+                !isNaN(point.longitude)
+            );
 
-                console.log(
-                    `Filtered route points, now have ${routeData.points.length} valid points`,
-                );
+            console.log(
+                `Filtered route points, now have ${validPoints.length} valid points out of ${routeData.points.length}`,
+            );
 
-                // If we have very few points, it might be a straight line
-                // Only try to fallback if we're not explicitly using OSM routing
-                if (
-                    routeData.points.length < 3 && !routingParams.useOsmRouting
-                ) {
-                    console.warn(
-                        "Route has too few points, may be a straight line",
-                    );
-
-                    // Check for a flag to avoid infinite fallback loops
-                    const isAlreadyFallback = Boolean(
-                        routeData._isGoogleFallback,
-                    );
-
-                    if (!isAlreadyFallback) {
-                        console.log(
-                            "Attempting to get more detailed route from Google",
-                        );
-                        try {
-                            const googleRouteResult = await getDirections(
-                                params.origin,
-                                params.destination,
-                                "walking",
-                            );
-
-                            // Only use Google route if it has more points
-                            if (
-                                googleRouteResult.points &&
-                                googleRouteResult.points.length >
-                                    routeData.points.length
-                            ) {
-                                console.log(
-                                    `Using Google route with ${googleRouteResult.points.length} points instead`,
-                                );
-
-                                // Merge the routes, keeping metadata from our backend
-                                routeData.points = googleRouteResult.points;
-                                // Add private flag for tracking (not part of interface)
-                                (routeData as any)._isGoogleFallback = true;
-                            }
-                        } catch (fallbackError) {
-                            console.error(
-                                "Failed to get fallback Google route:",
-                                fallbackError,
-                            );
-                        }
-                    }
-                }
+            // If we lost too many points during validation, throw an error
+            if (validPoints.length < 3 && routeData.points.length > 3) {
+                throw new Error("Route contains too many invalid coordinates");
             }
+
+            // If we have very few points, it might not be a valid route
+            if (validPoints.length < 3) {
+                // The route is likely not valid or just a straight line
+                console.warn("Route has too few points, may not be valid");
+                throw new Error(
+                    "Could not calculate a detailed accessible route",
+                );
+            }
+
+            // Update the route data with validated points
+            routeData.points = validPoints;
 
             return routeData;
         }
 
         console.error("Backend response empty or invalid");
-        throw new Error("Failed to get accessible route");
+        throw new Error("Failed to get accessible route: Empty response");
     } catch (error) {
         console.error("Error getting accessible route:", error);
 
+        // Extract meaningful error message
+        const errorMessage = error instanceof Error
+            ? error.message
+            : "Unknown error calculating accessible route";
+
+        // Check for specific known errors to provide better user feedback
+        if (errorMessage.includes("too long")) {
+            throw new Error(
+                "The route is too long for accessible routing. Please choose a closer destination.",
+            );
+        }
+
+        if (errorMessage.includes("No accessible roads")) {
+            throw new Error(
+                "No accessible roads found near your start or end point.",
+            );
+        }
+
         // If we're using OSM routing, throw the error instead of falling back
         if (params.useOsmRouting) {
-            throw new Error("OSM routing failed and fallback is disabled");
+            throw new Error(`Accessible routing failed: ${errorMessage}`);
         }
 
         // Otherwise, fallback to Google Directions API
         console.log("Falling back to Google Directions API");
-        const directionsResult = await getDirections(
-            params.origin,
-            params.destination,
-            "walking",
-        );
+        try {
+            const directionsResult = await getDirections(
+                params.origin,
+                params.destination,
+                "walking",
+            );
 
-        // Create a proper RoutingResult object with all required properties
-        const result: RoutingResult = {
-            ...directionsResult,
-            hasObstacles: false, // Default value when falling back to Google Directions
-            points: directionsResult.points || [], // Ensure the points property is never undefined
-        };
+            // Create a proper RoutingResult object with all required properties
+            const result: RoutingResult = {
+                ...directionsResult,
+                hasObstacles: false, // Default value when falling back to Google Directions
+                points: directionsResult.points || [], // Ensure the points property is never undefined
+            };
 
-        // Track that this is from Google fallback (as a non-interface property)
-        (result as any)._isGoogleFallback = true;
+            // Track that this is from Google fallback (as a non-interface property)
+            (result as any)._isGoogleFallback = true;
 
-        return result;
+            // Log and validate the fallback route
+            console.log(
+                `Using Google fallback route with ${result.points.length} points`,
+            );
+
+            if (!result.points || result.points.length < 2) {
+                throw new Error(
+                    "Google Directions API could not calculate a route",
+                );
+            }
+
+            return result;
+        } catch (fallbackError) {
+            console.error(
+                "Google Directions fallback also failed:",
+                fallbackError,
+            );
+            throw new Error(
+                "Could not calculate any route. Please try a different destination.",
+            );
+        }
     }
 }
 

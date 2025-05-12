@@ -16,7 +16,6 @@ import { useTheme } from "@/stores/theme/useTheme";
 import { useRouter } from "expo-router";
 import { getDirections } from "@/services/places.service";
 import DirectionsPanel from '@/components/map/DirectionsPanel';
-import { getAccessibleRoute } from '@/services/navigation.service';
 import useAuth from "../../stores/auth/hooks/useAuth";
 import { formatDistance } from "@/utils/distanceUtils";
 import accessibleRouteService from "@/services/accessible-route.service";
@@ -127,6 +126,38 @@ export default function MapScreen() {
     return routeData;
   };
 
+  const getGoogleMapsApiRoute = async (
+    originLocation: {
+      latitude: number,
+      longitude: number
+    },
+    destinationLocation: {
+      latitude: number,
+      longitude: number
+    },
+    transportMode: 'walking' | 'driving',
+  ): Promise<{
+    points: Array<{ latitude: number; longitude: number }>;
+    distance: number;
+    duration: string;
+    steps: Array<{
+      instructions: string;
+      distance: string;
+      duration: string;
+      startLocation: { latitude: number; longitude: number };
+      endLocation: { latitude: number; longitude: number };
+    }>;
+  }
+  > => {
+    const directionsResult = await getDirections(originLocation, destinationLocation, transportMode);
+    console.log("Google Directions API fallback result received:",
+      `points: ${directionsResult?.points?.length || 0}, ` +
+      `distance: ${directionsResult?.distance}, ` +
+      `duration: ${directionsResult?.duration}`
+    );
+    return directionsResult;
+  }
+
   // Handle route confirmation
   const handleRouteConfirmation = async (
     transportMode: 'walking' | 'driving',
@@ -140,6 +171,11 @@ export default function MapScreen() {
   ) => {
     if (!location) {
       console.error("Cannot start navigation: User location is not available");
+      Alert.alert(
+        "Location Required",
+        "Your current location is not available. Please enable location services and try again.",
+        [{ text: "OK" }]
+      );
       return;
     }
 
@@ -150,7 +186,6 @@ export default function MapScreen() {
       // Update selectedPlace with the complete destination data including location
       setSelectedPlace(destination);
       setNavigationMode(transportMode);
-      setIsNavigating(true);
       setRouteConfirmationModalVisible(false);
       // Update accessible route preference
       setUseAccessibleRoute(useAccessibleRouting);
@@ -195,80 +230,136 @@ export default function MapScreen() {
           // Ensure we have valid route data
           directionsResult = ensureValidRouteData(directionsResult);
 
+          // Verify that directionsResult has all required properties
+          if (!directionsResult || !directionsResult.points || directionsResult.points.length < 2) {
+            throw new Error("Invalid route data received from routing service");
+          }
+
           console.log("OSM-based routing result received:",
             `points: ${directionsResult?.points?.length || 0}, ` +
             `hasObstacles: ${directionsResult?.hasObstacles}, ` +
             `distance: ${directionsResult?.distance}, ` +
             `duration: ${directionsResult?.duration}`
           );
+
+          // Validate route distance - check for unreasonably long routes
+          if (directionsResult.distance > 50) {
+            throw new Error("The calculated route is unusually long (over 50km). Please choose a closer destination.");
+          }
         } catch (error) {
           console.error("Error with OSM-based routing:", error);
 
-          // Show an error to the user but continue with standard routing
+          // Show a specific error message to the user
+          const errorMessage = error instanceof Error
+            ? error.message
+            : "The accessible routing service is currently unavailable.";
+
+          // Show error message based on specific error cases
           Alert.alert(
-            "Accessible Routing Failed",
-            "The OSM-based accessible routing couldn't calculate a route. Falling back to standard directions.",
-            [{ text: "OK" }]
+            "Accessible Routing Issue",
+            errorMessage,
+            [{
+              text: "Use Standard Navigation",
+              onPress: async () => {
+                try {
+                  // Try standard Google routing as fallback
+                  setIsCalculatingRoute(true);
+                  directionsResult = await getGoogleMapsApiRoute(originLocation, destination.location, transportMode);
+                  continueWithRoute(directionsResult);
+                } catch (fallbackError) {
+                  handleRoutingError(fallbackError);
+                } finally {
+                  setIsCalculatingRoute(false);
+                }
+              }
+            },
+            {
+              text: "Cancel", style: "cancel", onPress: () => {
+                // Reset navigation state
+                cancelNavigation();
+                setIsCalculatingRoute(false);
+              }
+            }]
           );
 
-          // Final fallback to standard Google routing
-          directionsResult = await getDirections(originLocation, destination.location, transportMode);
-          console.log("Google Directions API fallback result received:",
-            `points: ${directionsResult?.points?.length || 0}, ` +
-            `distance: ${directionsResult?.distance}, ` +
-            `duration: ${directionsResult?.duration}`
-          );
+          // Return early to prevent further processing
+          return;
         }
       } else {
         // Otherwise use standard Google directions
         console.log("Using standard Google directions API");
-        directionsResult = await getDirections(originLocation, destination.location, transportMode);
-        console.log("Google directions result received:",
-          `points: ${directionsResult?.points?.length || 0}, ` +
-          `distance: ${directionsResult?.distance}, ` +
-          `duration: ${directionsResult?.duration}`
-        );
+        directionsResult = await getGoogleMapsApiRoute(originLocation, destination.location, transportMode);
       }
 
-      // Check if we received a valid route
-      if (!directionsResult.points || directionsResult.points.length === 0) {
-        console.warn("No route points received from routing service");
-        setRouteCoordinates([]);
-      } else {
-        console.log(`Setting ${directionsResult.points.length} route coordinates`);
-        console.log("First point:", JSON.stringify(directionsResult.points[0]));
-        console.log("Last point:", JSON.stringify(directionsResult.points[directionsResult.points.length - 1]));
-        setRouteCoordinates(directionsResult.points);
-      }
+      // Continue with the successfully calculated route
+      continueWithRoute(directionsResult);
 
-      setRouteInfo({
-        distance: directionsResult.distance,
-        duration: directionsResult.duration
-      });
-      setRouteSteps(directionsResult.steps || []);
-      setShowDirections(true);
-
-      // Fit map to show the entire route
-      if (mapRef.current && directionsResult.points && directionsResult.points.length > 0) {
-        console.log("Fitting map to route coordinates");
-        mapRef.current.fitToCoordinates(directionsResult.points, {
-          edgePadding: { top: 80, right: 50, bottom: 80, left: 50 },
-          animated: true
-        });
-      } else {
-        console.warn("Cannot fit map to coordinates: " +
-          (!mapRef.current ? "Map ref is null" : "No points available"));
-      }
     } catch (error) {
-      console.error('Error getting directions:', error);
-      // Reset to empty array on error
-      setRouteSteps([]);
-      setRouteCoordinates([]);
-      // Show an error toast or alert here
+      handleRoutingError(error);
     } finally {
       // Set route calculation to false when finished (success or error)
       setIsCalculatingRoute(false);
     }
+  };
+
+  // Helper function to continue with valid route data
+  const continueWithRoute = (directionsResult: any) => {
+    // Check if we received a valid route
+    if (!directionsResult || !directionsResult.points || directionsResult.points.length < 2) {
+      Alert.alert(
+        "Navigation Error",
+        "Failed to calculate a valid route. Please try again with a different destination.",
+        [{ text: "OK" }]
+      );
+      console.warn("No valid route points received from routing service");
+      cancelNavigation();
+      return;
+    }
+
+    console.log(`Setting ${directionsResult.points.length} route coordinates`);
+    console.log("First point:", JSON.stringify(directionsResult.points[0]));
+    console.log("Last point:", JSON.stringify(directionsResult.points[directionsResult.points.length - 1]));
+
+    // Set the navigation state with the route data
+    setIsNavigating(true);
+    setRouteCoordinates(directionsResult.points);
+    setRouteInfo({
+      distance: directionsResult.distance,
+      duration: directionsResult.duration
+    });
+    setRouteSteps(directionsResult.steps || []);
+    setShowDirections(true);
+
+    // Fit map to show the entire route
+    if (mapRef.current && directionsResult.points && directionsResult.points.length > 0) {
+      console.log("Fitting map to route coordinates");
+      mapRef.current.fitToCoordinates(directionsResult.points, {
+        edgePadding: { top: 80, right: 50, bottom: 80, left: 50 },
+        animated: true
+      });
+    } else {
+      console.warn("Cannot fit map to coordinates: " +
+        (!mapRef.current ? "Map ref is null" : "No points available"));
+    }
+  };
+
+  // Helper function to handle routing errors
+  const handleRoutingError = (error: unknown) => {
+    console.error('Error getting directions:', error);
+
+    // Reset navigation state
+    cancelNavigation();
+
+    // Show error message to user
+    const errorMessage = error instanceof Error
+      ? error.message
+      : "Failed to calculate a route. Please try again.";
+
+    Alert.alert(
+      "Navigation Error",
+      errorMessage,
+      [{ text: "OK" }]
+    );
   };
 
   // Cancel navigation
