@@ -19,6 +19,8 @@ import DirectionsPanel from '@/components/map/DirectionsPanel';
 import useAuth from "../../stores/auth/hooks/useAuth";
 import { formatDistance } from "@/utils/distanceUtils";
 import accessibleRouteService from "@/services/accessible-route.service";
+import { StatusBar } from 'expo-status-bar';
+import navigationHistoryService from "@/services/navigation-history.service";
 
 type LocationObjectType = Location.LocationObject;
 
@@ -43,6 +45,7 @@ export default function MapScreen() {
   const [showDirections, setShowDirections] = useState(false);
   const [useAccessibleRoute, setUseAccessibleRoute] = useState(true);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
+  const [currentNavigationId, setCurrentNavigationId] = useState<string | null>(null);
 
   // New state for place details modal
   const [placeDetailsModalVisible, setPlaceDetailsModalVisible] = useState(false);
@@ -165,9 +168,11 @@ export default function MapScreen() {
       placeId: string,
       name: string,
       address: string,
-      location: { latitude: number, longitude: number }
+      location: { latitude: number, longitude: number },
+      types?: string[]
     },
-    useAccessibleRouting: boolean = true
+    useAccessibleRouting: boolean = true,
+    navigationId: string | null = null
   ) => {
     if (!location) {
       console.error("Cannot start navigation: User location is not available");
@@ -189,6 +194,11 @@ export default function MapScreen() {
       setRouteConfirmationModalVisible(false);
       // Update accessible route preference
       setUseAccessibleRoute(useAccessibleRouting);
+
+      // Store the navigation ID for tracking
+      if (navigationId) {
+        setCurrentNavigationId(navigationId);
+      }
 
       console.log(`Starting navigation to ${destination.name} using ${transportMode} mode`);
       console.log(`Accessible routing: ${useAccessibleRouting ? 'Enabled' : 'Disabled'}`);
@@ -364,6 +374,23 @@ export default function MapScreen() {
 
   // Cancel navigation
   const cancelNavigation = () => {
+    // Mark navigation as completed if we have a navigation ID
+    if (currentNavigationId) {
+      try {
+        navigationHistoryService.completeNavigation(currentNavigationId)
+          .then(() => {
+            console.log(`Navigation ${currentNavigationId} marked as completed`);
+          })
+          .catch((error: Error) => {
+            console.error("Failed to mark navigation as completed:", error);
+          });
+
+        setCurrentNavigationId(null);
+      } catch (error) {
+        console.error("Error marking navigation as completed:", error);
+      }
+    }
+
     setIsNavigating(false);
     setRouteCoordinates([]);
     setRouteInfo(null);

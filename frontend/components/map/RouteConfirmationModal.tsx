@@ -6,6 +6,7 @@ import { useTheme } from '@/stores/theme/useTheme';
 import { useMarker } from '@/stores/marker/hooks/useMarker';
 import useAuth from '@/stores/auth/hooks/useAuth';
 import { formatDistance } from '@/utils/distanceUtils';
+import navigationHistoryService from '@/services/navigation-history.service';
 
 interface RouteConfirmationModalProps {
     visible: boolean;
@@ -13,7 +14,8 @@ interface RouteConfirmationModalProps {
     onConfirm: (
         transportMode: 'walking' | 'driving',
         destination: any,
-        useAccessibleRoute: boolean
+        useAccessibleRoute: boolean,
+        navigationId?: string | null
     ) => void;
     placeId: string | null;
     originLocation: { latitude: number, longitude: number } | null;
@@ -94,26 +96,50 @@ export default function RouteConfirmationModal({
         }
     }
 
-    function handleConfirm() {
-        if (placeDetails) {
-            onConfirm(
-                selectedTransport,
-                {
-                    placeId,
-                    name: placeDetails.name,
-                    address: placeDetails.formatted_address,
-                    location: {
-                        latitude: placeDetails.geometry.location.lat,
-                        longitude: placeDetails.geometry.location.lng
-                    }
-                },
-                useAccessibleRoute
-            );
-        }
-    }
+    async function handleConfirm() {
+        if (!placeDetails) return;
 
-    // Calculate if accessible routing should be available
-    const obstaclesNearby = markers.filter(marker => marker.obstacleScore >= 2).length > 0;
+        setLoading(true);
+        console.log("🚀 Route Confirmation: Start button pressed");
+
+        // Define the destination data
+        const destination = {
+            placeId: placeId as string,
+            name: placeDetails.name,
+            address: placeDetails.formatted_address,
+            location: {
+                latitude: placeDetails.geometry.location.lat,
+                longitude: placeDetails.geometry.location.lng
+            },
+            types: placeDetails.types || []
+        };
+        console.log("🚀 Route Confirmation: Destination data prepared:", destination);
+
+        // Record navigation history
+        let navigationId: string | null = null;
+
+        try {
+            console.log("🚀 Route Confirmation: Calling navigationHistoryService.recordNavigationStart");
+            navigationId = await navigationHistoryService.recordNavigationStart(
+                {
+                    placeId: destination.placeId,
+                    placeName: destination.name,
+                    placeTypes: Array.isArray(destination.types) ? destination.types : ['place'],
+                    location: destination.location
+                },
+                user?.id // Pass the user ID from useAuth hook
+            );
+            console.log("🚀 Route Confirmation: Navigation history recorded, ID:", navigationId);
+        } catch (historyError) {
+            console.error("🚀 Route Confirmation: Failed to record navigation history:", historyError);
+            // We'll continue without a navigation ID
+        }
+
+        // Call onConfirm with navigationId (which might be null)
+        console.log("🚀 Route Confirmation: Calling onConfirm with navigationId:", navigationId);
+        onConfirm(selectedTransport, destination, useAccessibleRoute, navigationId);
+        setLoading(false);
+    }
 
     return (
         <Modal

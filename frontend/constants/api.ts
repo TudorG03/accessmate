@@ -1,4 +1,3 @@
-
 import { Platform } from "react-native";
 
 export const getApiHost = () => {
@@ -10,3 +9,11 @@ export const getApiHost = () => {
 
 export const getApiPort = () => process.env.BACKEND_PORT || "3000";
 export const API_URL = `${getApiHost()}${getApiPort()}`;
+
+// Log the API URL for debugging
+console.log("🔗 API Configuration:", {
+    platform: Platform.OS,
+    host: getApiHost(),
+    port: getApiPort(),
+    fullUrl: API_URL,
+});

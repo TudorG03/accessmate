@@ -5,6 +5,7 @@ import routerAuth from "./routes/auth/auth.router.ts";
 import routerMarker from "./routes/marker/marker.router.ts";
 import routerRouting from "./routes/routing/routing.router.ts";
 import routerReview from "./routes/review/review.router.ts";
+import routerNavigationHistory from "./routes/history/navigation-history.router.ts";
 
 const app = new Application();
 
@@ -34,7 +35,8 @@ mainRouter
   .use("/auth", routerAuth.routes())
   .use("/api/markers", routerMarker.routes())
   .use("/api/routing", routerRouting.routes())
-  .use("/api/reviews", routerReview.routes());
+  .use("/api/reviews", routerReview.routes())
+  .use("/api/navigation-history", routerNavigationHistory.routes());
 
 // Apply routers
 app.use(mainRouter.routes());
