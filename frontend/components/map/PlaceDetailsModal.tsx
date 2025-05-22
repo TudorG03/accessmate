@@ -67,7 +67,6 @@ export default function PlaceDetailsModal({
     });
     const [reviewLoading, setReviewLoading] = useState(false);
     const [reviewError, setReviewError] = useState('');
-    const [placeReviews, setPlaceReviews] = useState([]);
     const [showAllReviews, setShowAllReviews] = useState(false);
 
     const { isDark } = useTheme();

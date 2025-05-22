@@ -89,3 +89,25 @@ export function getObstacleSummary(
 
     return summary;
 }
+
+/**
+ * Get obstacle icon name based on obstacle type
+ * Returns the name of the Ionicons icon to use
+ */
+export function getObstacleIcon(
+    obstacleType: string,
+): { name: string; color: string } {
+    const iconMap: Record<string, { name: string; color: string }> = {
+        [ObstacleType.STAIRS]: { name: "stairs", color: "white" },
+        [ObstacleType.STEEP_RAMP]: { name: "trending-up", color: "white" },
+        [ObstacleType.NARROW_PASSAGE]: { name: "resize", color: "white" },
+        [ObstacleType.CONSTRUCTION]: { name: "hammer", color: "white" },
+        [ObstacleType.UNEVEN_SURFACE]: { name: "analytics", color: "white" },
+        [ObstacleType.NO_SIDEWALK]: { name: "close-circle", color: "white" },
+        [ObstacleType.HIGH_CURB]: { name: "arrow-up", color: "white" },
+        [ObstacleType.TEMPORARY]: { name: "time", color: "white" },
+        [ObstacleType.OTHER]: { name: "help-circle", color: "white" },
+    };
+
+    return iconMap[obstacleType] || { name: "location", color: "white" };
+}

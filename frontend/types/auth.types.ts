@@ -17,15 +17,9 @@ export enum Budget {
   MEDIUM = "medium",
   HIGH = "high",
 }
-
-export enum ActivityType {
-  DINING = "dining",
-  ENTERTAINMENT = "entertainment",
-  EDUCATION = "education",
-  OUTDOORS = "outdoors",
-  SHOPPING = "shopping",
-  SPORT = "sport",
-  HEALTH = "health",
+export interface PlaceType {
+  value: string;
+  label: string;
 }
 
 export enum DistanceUnit {
@@ -46,7 +40,7 @@ interface AccessibilityRequirements {
 }
 
 export interface UserPreferences {
-  activityTypes: ActivityType[];
+  activityTypes: PlaceType[];
   transportMethod: TransportMethod;
   budget: Budget;
   baseLocation: BaseLocation;

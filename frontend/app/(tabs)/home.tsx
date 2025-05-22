@@ -5,109 +5,87 @@ import React from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../stores/theme/useTheme";
 import { formatDistance } from "@/utils/distanceUtils";
+import NearbyPlaces from "../../components/home/NearbyPlaces";
 
 export default function UserDashboard() {
   const { user } = useAuth();
   const { colors, styles, isDark } = useTheme();
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50">
-      <ScrollView className="flex-1 p-4">
-        <View className="mb-6">
-          <Text className="text-2xl font-bold text-gray-800">
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+      <ScrollView style={{ flex: 1, padding: 16 }}>
+        <View style={{ marginBottom: 24 }}>
+          <Text style={{ fontSize: 24, fontWeight: 'bold', color: colors.text }}>
             Welcome, {user?.displayName}!
           </Text>
-          <Text className="text-gray-600">
+          <Text style={{ color: colors.secondary }}>
             Find accessible routes and locations
           </Text>
         </View>
 
         {/* Quick Actions */}
-        <View className="mb-6">
-          <Text className="text-lg font-semibold mb-3 text-gray-800">
+        <View style={{ marginBottom: 24 }}>
+          <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 12, color: colors.text }}>
             Quick Actions
           </Text>
-          <View className="flex-row flex-wrap">
-            <Pressable className="w-1/2 p-2">
-              <View className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                <View className="bg-blue-100 w-10 h-10 rounded-full items-center justify-center mb-2">
-                  <Ionicons name="navigate" size={20} color="#3b82f6" />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            <Pressable style={{ width: '50%', padding: 8 }}>
+              <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 12, shadowOpacity: 0.1, shadowRadius: 4, borderWidth: 1, borderColor: colors.border }}>
+                <View style={{ backgroundColor: isDark ? '#1e3a8a' : '#dbeafe', width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                  <Ionicons name="navigate" size={20} color={isDark ? '#93c5fd' : '#3b82f6'} />
                 </View>
-                <Text className="font-medium">Navigate</Text>
-                <Text className="text-xs text-gray-500">Find accessible routes</Text>
+                <Text style={{ fontWeight: '500', color: colors.text }}>Navigate</Text>
+                <Text style={{ fontSize: 12, color: colors.secondary }}>Find accessible routes</Text>
               </View>
             </Pressable>
 
-            <Pressable className="w-1/2 p-2">
-              <View className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                <View className="bg-green-100 w-10 h-10 rounded-full items-center justify-center mb-2">
-                  <Ionicons name="search" size={20} color="#10b981" />
+            <Pressable style={{ width: '50%', padding: 8 }}>
+              <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 12, shadowOpacity: 0.1, shadowRadius: 4, borderWidth: 1, borderColor: colors.border }}>
+                <View style={{ backgroundColor: isDark ? '#064e3b' : '#d1fae5', width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                  <Ionicons name="search" size={20} color={isDark ? '#6ee7b7' : '#10b981'} />
                 </View>
-                <Text className="font-medium">Discover</Text>
-                <Text className="text-xs text-gray-500">Find accessible places</Text>
+                <Text style={{ fontWeight: '500', color: colors.text }}>Discover</Text>
+                <Text style={{ fontSize: 12, color: colors.secondary }}>Find accessible places</Text>
               </View>
             </Pressable>
 
-            <Pressable className="w-1/2 p-2">
-              <View className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                <View className="bg-purple-100 w-10 h-10 rounded-full items-center justify-center mb-2">
-                  <Ionicons name="bookmark" size={20} color="#8b5cf6" />
+            <Pressable style={{ width: '50%', padding: 8 }}>
+              <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 12, shadowOpacity: 0.1, shadowRadius: 4, borderWidth: 1, borderColor: colors.border }}>
+                <View style={{ backgroundColor: isDark ? '#5b21b6' : '#ede9fe', width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                  <Ionicons name="bookmark" size={20} color={isDark ? '#c4b5fd' : '#8b5cf6'} />
                 </View>
-                <Text className="font-medium">Saved</Text>
-                <Text className="text-xs text-gray-500">View saved locations</Text>
+                <Text style={{ fontWeight: '500', color: colors.text }}>Saved</Text>
+                <Text style={{ fontSize: 12, color: colors.secondary }}>View saved locations</Text>
               </View>
             </Pressable>
 
-            <Pressable className="w-1/2 p-2">
-              <View className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                <View className="bg-orange-100 w-10 h-10 rounded-full items-center justify-center mb-2">
-                  <Ionicons name="settings" size={20} color="#f59e0b" />
+            <Pressable style={{ width: '50%', padding: 8 }}>
+              <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 12, shadowOpacity: 0.1, shadowRadius: 4, borderWidth: 1, borderColor: colors.border }}>
+                <View style={{ backgroundColor: isDark ? '#78350f' : '#ffedd5', width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                  <Ionicons name="settings" size={20} color={isDark ? '#fdba74' : '#f59e0b'} />
                 </View>
-                <Text className="font-medium">Settings</Text>
-                <Text className="text-xs text-gray-500">Adjust preferences</Text>
+                <Text style={{ fontWeight: '500', color: colors.text }}>Settings</Text>
+                <Text style={{ fontSize: 12, color: colors.secondary }}>Adjust preferences</Text>
               </View>
             </Pressable>
           </View>
         </View>
 
-        {/* Nearby Accessible Places */}
-        <View className="mb-6">
-          <Text className="text-lg font-semibold mb-3 text-gray-800">
-            Nearby Accessible Places
-          </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {[1, 2, 3, 4].map((item) => (
-              <View key={item} className="mr-4 bg-white p-3 rounded-xl shadow-sm border border-gray-100 w-64">
-                <View className="h-32 bg-gray-200 rounded-lg mb-2" />
-                <Text className="font-medium">Accessible Restaurant {item}</Text>
-                <Text className="text-xs text-gray-500 mb-1">
-                  {formatDistance(1.0 + item / 10, user?.preferences?.preferedUnit)} away
-                </Text>
-                <View className="flex-row">
-                  <View className="bg-blue-50 rounded-full px-2 py-1 mr-1">
-                    <Text className="text-xs text-blue-600">Wheelchair Access</Text>
-                  </View>
-                  <View className="bg-green-50 rounded-full px-2 py-1">
-                    <Text className="text-xs text-green-600">Elevator</Text>
-                  </View>
-                </View>
-              </View>
-            ))}
-          </ScrollView>
-        </View>
+        {/* Nearby Places */}
+        <NearbyPlaces />
 
         {/* Community Tips */}
         <View>
-          <Text className="text-lg font-semibold mb-3 text-gray-800">
+          <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 12, color: colors.text }}>
             Community Tips
           </Text>
-          <View className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-3">
-            <Text className="font-medium mb-1">Using Public Transport</Text>
-            <Text className="text-sm text-gray-600">Tips on navigating public transportation in a wheelchair including schedules and assistance options.</Text>
+          <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 12, shadowOpacity: 0.1, shadowRadius: 4, borderWidth: 1, borderColor: colors.border, marginBottom: 12 }}>
+            <Text style={{ fontWeight: '500', marginBottom: 4, color: colors.text }}>Using Public Transport</Text>
+            <Text style={{ fontSize: 14, color: colors.secondary }}>Tips on navigating public transportation in a wheelchair including schedules and assistance options.</Text>
           </View>
-          <View className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-            <Text className="font-medium mb-1">Finding Accessible Restaurants</Text>
-            <Text className="text-sm text-gray-600">How to find restaurants with proper accessibility features and adequate space between tables.</Text>
+          <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 12, shadowOpacity: 0.1, shadowRadius: 4, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ fontWeight: '500', marginBottom: 4, color: colors.text }}>Finding Accessible Restaurants</Text>
+            <Text style={{ fontSize: 14, color: colors.secondary }}>How to find restaurants with proper accessibility features and adequate space between tables.</Text>
           </View>
         </View>
       </ScrollView>

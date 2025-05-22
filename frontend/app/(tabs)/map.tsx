@@ -11,7 +11,7 @@ import PlaceDetailsModal from "@/components/map/PlaceDetailsModal";
 import PlaceSearchBar from "@/components/map/PlaceSearchBar";
 import { useMarker } from "@/stores/marker/hooks/useMarker";
 import { Marker } from "@/types/marker.types";
-import { getObstacleColor, getObstacleEmoji } from "@/stores/marker/marker.utils";
+import { getObstacleColor, getObstacleEmoji, getObstacleIcon } from "@/stores/marker/marker.utils";
 import { useTheme } from "@/stores/theme/useTheme";
 import { useRouter } from "expo-router";
 import { getDirections } from "@/services/places.service";
@@ -19,8 +19,8 @@ import DirectionsPanel from '@/components/map/DirectionsPanel';
 import useAuth from "../../stores/auth/hooks/useAuth";
 import { formatDistance } from "@/utils/distanceUtils";
 import accessibleRouteService from "@/services/accessible-route.service";
-import { StatusBar } from 'expo-status-bar';
 import navigationHistoryService from "@/services/navigation-history.service";
+import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 
 type LocationObjectType = Location.LocationObject;
 
@@ -597,7 +597,7 @@ export default function MapScreen() {
             onPoiClick={handlePoiClick}
             onMapReady={handleMapReady}
           >
-            {/* Display all obstacle markers from the store */}
+            {/* Display all obstacle markers from the store with custom icons */}
             {markers.map((marker, index) => (
               <MapMarker
                 key={marker.id || `marker-${index}`}
@@ -605,11 +605,40 @@ export default function MapScreen() {
                   latitude: marker.location.latitude,
                   longitude: marker.location.longitude,
                 }}
-                pinColor={getObstacleColor(marker.obstacleScore)}
                 title={getMarkerTitle(marker)}
                 description={getMarkerDescription(marker)}
                 onPress={() => handleMarkerPress(marker)}
-              />
+                anchor={{ x: 0.5, y: 1.0 }}
+              >
+                <View style={{
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <View style={{
+                    backgroundColor: getObstacleColor(marker.obstacleScore),
+                    borderRadius: 15,
+                    padding: 8,
+                    borderWidth: 1.5,
+                    borderColor: 'white',
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 3,
+                    elevation: 5,
+                  }}>
+                    {
+                      getObstacleIcon(marker.obstacleType).name == "stairs" ?
+                        <FontAwesome6 name="stairs" size={18} color={getObstacleIcon(marker.obstacleType).color} />
+                        :
+                        <Ionicons
+                          name={getObstacleIcon(marker.obstacleType).name}
+                          size={18}
+                          color={getObstacleIcon(marker.obstacleType).color}
+                        />
+                    }
+                  </View>
+                </View>
+              </MapMarker>
             ))}
 
             {/* Display the route polyline if navigating */}

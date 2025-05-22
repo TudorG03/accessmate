@@ -1,4 +1,5 @@
-import { useAuthStore } from '../auth.store';
+import { useAuthStore } from "../auth.store";
+import { UserPreferences } from "@/types/auth.types";
 
 const useAuth = () => {
   return {
@@ -12,10 +13,10 @@ const useAuth = () => {
     register: useAuthStore((s) => s.register),
     logout: useAuthStore((s) => s.logout),
     updateUser: useAuthStore((s) => s.updateUser),
+    updateUserPreferences: useAuthStore((s) => s.updateUserPreferences),
     refreshToken: useAuthStore((s) => s.refreshToken),
     clearError: useAuthStore((s) => s.clearError),
   };
 };
 
 export default useAuth;
-

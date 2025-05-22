@@ -22,20 +22,25 @@ export const addNavigationHistory = async (ctx: Context) => {
       return;
     }
 
+    // Remove redundant place types
+    const filteredPlaceTypes: string[] = placeTypes.filter((type: string) =>
+      type != "point_of_interest" && type != "establishment"
+    );
+
     // Convert string userId to MongoDB ObjectId
     const userObjectId = new mongoose.Types.ObjectId(userId);
 
     // Transform location to GeoJSON format
     const geoJsonLocation = {
       type: "Point",
-      coordinates: [location.longitude, location.latitude], // Note: GeoJSON is [longitude, latitude]
+      coordinates: [location.longitude, location.latitude],
     };
 
     const newHistory = new NavigationHistory({
       userId: userObjectId,
       placeId,
       placeName,
-      placeTypes,
+      placeTypes: filteredPlaceTypes,
       location: geoJsonLocation,
       timestamp: new Date(),
     });

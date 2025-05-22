@@ -1,4 +1,4 @@
-import { User } from "@/types/auth.types";
+import { User, UserPreferences } from "@/types/auth.types";
 import api from "@/services/api.service";
 import { AuthResponse, TokenResponse } from "./auth.types";
 
@@ -133,6 +133,37 @@ export const AuthService = {
             if (error.response) {
                 const errorMessage = error.response.data.message ||
                     "Update failed";
+
+                if (error.response.status === 400) {
+                    throw new Error(`Validation Error: ${errorMessage}`);
+                } else if (error.response.status === 403) {
+                    throw new Error(`Permission Error: ${errorMessage}`);
+                } else if (error.response.status === 404) {
+                    throw new Error(`Not Found: ${errorMessage}`);
+                }
+
+                throw new Error(errorMessage);
+            }
+            throw error;
+        }
+    },
+
+    /**
+     * Update user preferences
+     */
+    async updateUserPreferences(
+        userId: string,
+        preferences: UserPreferences,
+    ): Promise<{ user: User }> {
+        try {
+            const response = await api.put(`/auth/update/${userId}`, {
+                preferences,
+            });
+            return response.data;
+        } catch (error) {
+            if (error.response) {
+                const errorMessage = error.response.data.message ||
+                    "Preferences update failed";
 
                 if (error.response.status === 400) {
                     throw new Error(`Validation Error: ${errorMessage}`);

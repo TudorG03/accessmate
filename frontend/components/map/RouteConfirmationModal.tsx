@@ -120,6 +120,8 @@ export default function RouteConfirmationModal({
 
         try {
             console.log("🚀 Route Confirmation: Calling navigationHistoryService.recordNavigationStart");
+            console.log(destination);
+            
             navigationId = await navigationHistoryService.recordNavigationStart(
                 {
                     placeId: destination.placeId,

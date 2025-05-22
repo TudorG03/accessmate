@@ -1,16 +1,18 @@
-import React from "react";
-import { View, Text, Pressable, ScrollView, Image } from "react-native";
+import React, { useState } from "react";
+import { View, Text, Pressable, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
 import { useTheme } from "../../stores/theme/useTheme";
 import useAuth from "../../stores/auth/hooks/useAuth";
 import { ThemeToggle } from "../../components/ThemeToggle";
 import { UnitPreferenceSelector } from "../../components/UnitPreferenceSelector";
+import PreferencesModal from "../../components/settings/PreferencesModal";
+import TopActivityTypes from "../../components/settings/TopActivityTypes";
 
 export default function ProfileScreen() {
   const { logout, user } = useAuth();
   const { colors, classes, isDark, styles } = useTheme();
+  const [preferencesModalVisible, setPreferencesModalVisible] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -22,6 +24,11 @@ export default function ProfileScreen() {
       icon: "person-outline" as const,
       title: "Account Information",
       onPress: () => console.log("Account Information pressed"),
+    },
+    {
+      icon: "heart-outline" as const,
+      title: "My Preferences",
+      onPress: () => setPreferencesModalVisible(true),
     },
     {
       icon: "notifications-outline" as const,
@@ -93,6 +100,9 @@ export default function ProfileScreen() {
             ))}
           </View>
 
+          {/* Top Activity Types */}
+          <TopActivityTypes colors={colors} styles={styles} />
+
           {/* Preferences Settings */}
           <View className="p-4 rounded-lg mb-6" style={styles.card}>
             <Text className="text-lg font-bold mb-2" style={styles.text}>
@@ -124,6 +134,13 @@ export default function ProfileScreen() {
           </Pressable>
         </View>
       </ScrollView>
+
+      <PreferencesModal
+        visible={preferencesModalVisible}
+        onClose={() => setPreferencesModalVisible(false)}
+        colors={colors}
+        styles={styles}
+      />
     </SafeAreaView>
   );
 } 

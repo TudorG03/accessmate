@@ -38,7 +38,10 @@ export enum DistanceUnit {
 }
 
 interface IUserPreferences {
-  activityTypes: string[];
+  activityTypes: {
+    value: string;
+    label: string;
+  }[];
   transportMethod: TransportMethod;
   budget: Budget;
   baseLocation: {
@@ -99,14 +102,28 @@ const userSchema: Schema = new Schema({
   },
   preferences: {
     activityTypes: {
-      type: [String],
+      type: [{
+        value: {
+          type: String,
+          required: true,
+        },
+        label: {
+          type: String,
+          required: true,
+        },
+      }],
       default: [],
       validate: {
-        validator: (v: string[]) =>
-          v.every((type) =>
-            Object.values(ActivityType).includes(type as ActivityType)
-          ),
-        message: "Invalid activity type",
+        validator: function (v: { value: string; label: string }[]) {
+          // Accept any string values instead of strict checking against enum
+          return Array.isArray(v) &&
+            v.every((item) =>
+              typeof item === "object" &&
+              typeof item.value === "string" &&
+              typeof item.label === "string"
+            );
+        },
+        message: "Each activity type must have a string value and label",
       },
     },
     transportMethod: {

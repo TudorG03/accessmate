@@ -67,8 +67,13 @@ interface AccessibilityRequirements {
   hasAccessibleBathroom: boolean;
 }
 
+interface PlaceType {
+  value: string;
+  label: string;
+}
+
 interface UserPreferences {
-  activityTypes: ActivityType[];
+  activityTypes: PlaceType[];
   transportMethod: TransportMethod;
   budget: Budget;
   baseLocation: BaseLocation;

@@ -47,6 +47,7 @@ interface AuthState {
   logout: () => Promise<void>;
   refreshToken: () => Promise<boolean>;
   updateUser: (userId: string, userData: Partial<User>) => Promise<void>;
+  updateUserPreferences: (preferences: UserPreferences) => Promise<void>;
   clearError: () => void;
 }
 
@@ -209,6 +210,32 @@ export const useAuthStore = create<AuthState>()(
               error: error instanceof Error ? error.message : "Update failed",
             });
             console.error("Update user error:", error);
+          } finally {
+            set({ isLoading: false });
+          }
+        },
+
+        updateUserPreferences: async (preferences: UserPreferences) => {
+          set({ isLoading: true, error: null });
+          try {
+            if (!get().user || !get().user.id) {
+              throw new Error("User not authenticated");
+            }
+
+            const userId = get().user.id;
+            const data = await AuthService.updateUserPreferences(
+              userId,
+              preferences,
+            );
+
+            set({ user: data.user });
+          } catch (error) {
+            set({
+              error: error instanceof Error
+                ? error.message
+                : "Preferences update failed",
+            });
+            console.error("Update preferences error:", error);
           } finally {
             set({ isLoading: false });
           }
