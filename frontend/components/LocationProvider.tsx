@@ -12,6 +12,7 @@ interface LocationContextType {
     toggleTracking: () => Promise<boolean>;
     updateCheckRadius: (radius: number) => void;
     clearAllProcessedMarkers: () => void;
+    ensureValidLocation: () => Promise<MarkerLocation>;
 }
 
 // Create the context with default values
@@ -24,6 +25,7 @@ const LocationContext = createContext<LocationContextType>({
     toggleTracking: async () => false,
     updateCheckRadius: () => { },
     clearAllProcessedMarkers: () => { },
+    ensureValidLocation: async () => ({ latitude: 0, longitude: 0 }),
 });
 
 // Hook to use location data

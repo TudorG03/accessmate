@@ -6,6 +6,7 @@ import { Picker } from '@react-native-picker/picker';
 import { PlaceType, Budget, DistanceUnit, TransportMethod, UserPreferences } from "@/types/auth.types";
 import useAuth from "@/stores/auth/hooks/useAuth";
 import api from "@/services/api.service";
+import LocationSearchBar from "@/components/location/LocationSearchBar";
 
 interface PreferencesModalProps {
     visible: boolean;
@@ -22,6 +23,7 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
     const [transportMethod, setTransportMethod] = useState<TransportMethod>(TransportMethod.WALKING);
     const [budget, setBudget] = useState<Budget>(Budget.MEDIUM);
     const [location, setLocation] = useState({ latitude: 0, longitude: 0 });
+    const [locationName, setLocationName] = useState<string>('');
     const [searchRadius, setSearchRadius] = useState<number>(5);
     const [wheelchairAccessible, setWheelchairAccessible] = useState<boolean>(false);
     const [hasElevator, setHasElevator] = useState<boolean>(false);
@@ -62,6 +64,7 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
             setTransportMethod(user.preferences.transportMethod || TransportMethod.WALKING);
             setBudget(user.preferences.budget || Budget.MEDIUM);
             setLocation(user.preferences.baseLocation || { latitude: 0, longitude: 0 });
+            setLocationName(''); // Will be set when location is selected
             setSearchRadius(user.preferences.searchRadius || 5);
 
             if (user.preferences.accessibilityRequirements) {
@@ -72,6 +75,17 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
             }
         }
     }, [user, visible]);
+
+    // Handle location selection from the search bar
+    const handleLocationSelected = (selectedLocation: {
+        name: string,
+        address: string,
+        coordinates: { latitude: number, longitude: number }
+    }) => {
+        setLocation(selectedLocation.coordinates);
+        setLocationName(selectedLocation.address);
+        console.log('Location selected:', selectedLocation);
+    };
 
     const savePreferences = async () => {
         try {
@@ -274,6 +288,24 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
                                     <Picker.Item key="high" label="High" value={Budget.HIGH} />
                                 </Picker>
                             </View>
+                        </View>
+
+                        {/* Location Search Bar */}
+                        <View className="mb-6">
+                            <Text className="text-lg font-bold mb-2" style={styles.text}>Base Location</Text>
+                            <Text className="text-sm mb-2" style={styles.text}>
+                                Set your preferred base location for custom recommendations
+                            </Text>
+                            <LocationSearchBar
+                                onLocationSelected={handleLocationSelected}
+                                initialValue={locationName}
+                                placeholder="Search for your base location..."
+                            />
+                            {location.latitude !== 0 && location.longitude !== 0 && (
+                                <Text className="text-xs mt-2" style={{ color: colors.secondaryText }}>
+                                    Current: {locationName || `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`}
+                                </Text>
+                            )}
                         </View>
 
                         {/* Search Radius */}

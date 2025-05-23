@@ -639,7 +639,14 @@ export default function PlaceDetailsModal({
                                                                 <Image
                                                                     source={{ uri: photo.url }}
                                                                     style={{ width: 200, height: 150 }}
-                                                                    onError={() => handleImageError(index)}
+                                                                    onError={(error) => {
+                                                                        console.log(`🖼️ Image load error for photo ${index}:`, error);
+                                                                        console.log(`🖼️ Failed URL: ${photo.url}`);
+                                                                        handleImageError(index);
+                                                                    }}
+                                                                    onLoad={() => {
+                                                                        console.log(`🖼️ Image loaded successfully for photo ${index}`);
+                                                                    }}
                                                                     // Try to handle network issues with retries
                                                                     fadeDuration={300}
                                                                 />
@@ -777,12 +784,12 @@ export default function PlaceDetailsModal({
                                 >
                                     <Text className="text-white font-semibold">Leave a Review</Text>
                                 </TouchableOpacity>
-                            <TouchableOpacity
+                                <TouchableOpacity
                                     className="flex-1 bg-[#F1B24A] rounded-lg py-3 items-center"
-                                onPress={handleNavigatePress}
-                            >
-                                <Text className="text-white font-semibold">Navigate to this place</Text>
-                            </TouchableOpacity>
+                                    onPress={handleNavigatePress}
+                                >
+                                    <Text className="text-white font-semibold">Navigate to this place</Text>
+                                </TouchableOpacity>
                             </View>
                         </ScrollView>
                     ) : (

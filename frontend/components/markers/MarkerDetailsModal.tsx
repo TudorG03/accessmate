@@ -167,6 +167,13 @@ const MarkerDetailsModal: React.FC<MarkerDetailsModalProps> = ({ visible, onClos
                                                 source={{ uri: imageUri }}
                                                 className="w-[150px] h-[150px]"
                                                 resizeMode="cover"
+                                                onError={(error) => {
+                                                    console.log(`🖼️ Marker image load error:`, error);
+                                                    console.log(`🖼️ Failed marker image URI: ${imageUri}`);
+                                                }}
+                                                onLoad={() => {
+                                                    console.log(`🖼️ Marker image loaded successfully: ${imageUri.substring(0, 50)}...`);
+                                                }}
                                             />
                                         </View>
                                     ))}

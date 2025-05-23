@@ -13,7 +13,7 @@ import { useMarker } from "@/stores/marker/hooks/useMarker";
 import { Marker } from "@/types/marker.types";
 import { getObstacleColor, getObstacleEmoji, getObstacleIcon } from "@/stores/marker/marker.utils";
 import { useTheme } from "@/stores/theme/useTheme";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { getDirections } from "@/services/places.service";
 import DirectionsPanel from '@/components/map/DirectionsPanel';
 import useAuth from "../../stores/auth/hooks/useAuth";
@@ -54,12 +54,31 @@ export default function MapScreen() {
   const mapRef = useRef<MapView | null>(null);
   const { isDark, colors } = useTheme();
   const router = useRouter();
+  const params = useLocalSearchParams();
 
   // Use our marker hook to access marker data
   const { markers, findNearbyMarkers } = useMarker();
 
   // Add this line with the other state hooks
   const { user } = useAuth();
+
+  // Handle navigation parameters to open place details modal
+  useEffect(() => {
+    if (params.openPlaceDetails === "true" && params.placeId) {
+      console.log("Opening place details modal for place ID:", params.placeId);
+      setSelectedPoiPlaceId(params.placeId as string);
+      setPlaceDetailsModalVisible(true);
+
+      // Clear the parameters to prevent the modal from reopening
+      router.setParams({ openPlaceDetails: undefined, placeId: undefined });
+    }
+  }, [params.openPlaceDetails, params.placeId]);
+
+  // Handle closing the place details modal
+  const handlePlaceDetailsModalClose = () => {
+    setPlaceDetailsModalVisible(false);
+    setSelectedPoiPlaceId(null);
+  };
 
   // Function to handle marker selection
   const handleMarkerPress = (marker: Marker) => {
@@ -838,7 +857,7 @@ export default function MapScreen() {
           {/* Place Details Modal */}
           <PlaceDetailsModal
             visible={placeDetailsModalVisible}
-            onClose={() => setPlaceDetailsModalVisible(false)}
+            onClose={handlePlaceDetailsModalClose}
             onStartNavigation={handleStartNavigation}
             placeId={selectedPoiPlaceId}
           />
@@ -867,4 +886,4 @@ const styles = StyleSheet.create({
     padding: 10,
     zIndex: 1000,
   },
-}); 
+});

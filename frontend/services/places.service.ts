@@ -2,6 +2,13 @@
  * Service for handling Google Places API interactions
  */
 import Constants from "expo-constants";
+import { useLocationStore } from "../stores/location/location.store";
+
+// Default location (can be set to a popular location in your target city)
+const DEFAULT_LOCATION = {
+    latitude: 40.7128, // New York City as example
+    longitude: -74.0060,
+};
 
 // Get API key from environment variables
 const GOOGLE_MAPS_API_KEY =
@@ -109,8 +116,8 @@ export async function searchPlaces(query: string): Promise<PlacePrediction[]> {
         // Transform the new API format to match our existing interface
         if (data.suggestions && Array.isArray(data.suggestions)) {
             return data.suggestions
-                .filter((suggestion) => suggestion.placePrediction) // Only process place predictions
-                .map((suggestion) => {
+                .filter((suggestion: any) => suggestion.placePrediction) // Only process place predictions
+                .map((suggestion: any) => {
                     const placePrediction = suggestion.placePrediction;
                     return {
                         place_id: placePrediction.placeId ||
@@ -254,10 +261,12 @@ export async function getPlaceDetails(placeId: string): Promise<PlaceDetails> {
                         html_attributions: [],
                     };
                 }
-            }).filter((photo) => photo.photo_reference); // Filter out any empty photo references
+            }).filter((photo: any) => photo.photo_reference); // Filter out any empty photo references
 
             console.log(
-                `Extracted ${result.photos.length} valid photo references`,
+                `Extracted ${
+                    result.photos?.length || 0
+                } valid photo references`,
             );
         }
 
@@ -488,6 +497,14 @@ export async function getPlacePhoto(
             return "";
         }
 
+        // Check if the photo reference is valid
+        if (
+            !photoName || typeof photoName !== "string" || photoName.length < 5
+        ) {
+            console.warn(`Invalid photo reference: ${photoName}`);
+            return "";
+        }
+
         console.log(`Fetching photo with reference: ${photoName}`);
 
         // In the new Places API (v1), we have to handle both legacy and new style photo references
@@ -498,6 +515,9 @@ export async function getPlacePhoto(
             // Use the legacy API endpoint for old-style photo references
             const legacyUrl =
                 `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxWidth}&photo_reference=${photoName}&key=${GOOGLE_MAPS_API_KEY}`;
+            console.log(
+                `Returning legacy URL: ${legacyUrl.substring(0, 70)}...`,
+            );
             return legacyUrl;
         }
 
@@ -505,71 +525,11 @@ export async function getPlacePhoto(
             `Using new Places API for photo: ${photoName.substring(0, 20)}...`,
         );
 
-        // For new-style photo references, use the photos endpoint
-        // Instead of trying to create blob URLs which don't work in React Native,
-        // we'll construct a direct URL to the image through our API
-
-        // Method 1: Direct URL with field mask to get photoUri
-        // This method tries to get the JSON response with photoUri
-        const url =
-            `${PLACES_API_BASE_URL}/${photoName}/media?maxWidthPx=${maxWidth}&maxHeightPx=${maxHeight}`;
-
-        try {
-            // For the new Places API, we need to make a request to get the direct photo URL
-            const response = await fetch(url, {
-                method: "GET",
-                headers: {
-                    "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
-                    "X-Goog-FieldMask": "photoUri",
-                },
-            });
-
-            console.log("Photo API Response Status:", response.status);
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error("Places Photo API Error Response:", errorText);
-                throw new Error(`Places Photo API error: ${response.status}`);
-            }
-
-            // Check the content type of the response
-            const contentType = response.headers.get("content-type");
-            console.log(`Photo response content type: ${contentType}`);
-
-            // If we got a JSON response, extract the photoUri
-            if (contentType && contentType.includes("application/json")) {
-                try {
-                    const data = await response.json();
-                    console.log(
-                        "Photo data received:",
-                        data?.photoUri ? "URL received" : "No URL in response",
-                    );
-                    return data.photoUri || "";
-                } catch (parseError) {
-                    console.error("Error parsing JSON response:", parseError);
-                }
-            } // If we received a direct image, we need to use a different approach
-            else if (contentType && contentType.includes("image/")) {
-                console.log(
-                    "Received direct image data - trying alternative method",
-                );
-                // Fall through to alternative method below
-            } else {
-                console.warn(
-                    `Unexpected content type in photo response: ${contentType}`,
-                );
-            }
-        } catch (error) {
-            console.error("Error with primary photo fetch method:", error);
-        }
-
-        // Method 2: Alternative approach - use direct URL without field mask
-        // If the first method failed or returned an image directly, try this method
-        // This constructs a URL that should redirect to the image directly
-        console.log("Using alternative method for photo URL");
+        // Direct URL with API key
         const directUrl =
             `${PLACES_API_BASE_URL}/${photoName}/media?maxWidthPx=${maxWidth}&maxHeightPx=${maxHeight}&key=${GOOGLE_MAPS_API_KEY}`;
 
+        console.log(`Returning direct URL: ${directUrl.substring(0, 70)}...`);
         return directUrl;
     } catch (error) {
         console.error("Error fetching place photo:", error);
@@ -624,11 +584,36 @@ export async function getNearbyPlaces(
 
         const { location, radius, types, maxResults = 10 } = params;
 
+        let effectiveLocation = location;
+
+        // Check for invalid coordinates (0,0 or very close to it)
+        if (
+            Math.abs(location.latitude) < 0.000001 &&
+            Math.abs(location.longitude) < 0.000001
+        ) {
+            console.warn(
+                "Invalid coordinates detected (0,0). App should use location store's value.",
+            );
+
+            // Instead of using default location, we should retrieve the persisted location
+            // Use the getLastKnownLocation method from the location store
+            // Note: Components calling this method should first call ensureValidLocation
+            // from useLocation() hook to ensure a valid location is available
+
+            const { getLastKnownLocation } = useLocationStore.getState();
+            effectiveLocation = getLastKnownLocation();
+
+            console.log(
+                "Using stored location for nearby search:",
+                effectiveLocation,
+            );
+        }
+
         // Print full request parameters for debugging
         console.log(
             "Places API request params:",
             JSON.stringify({
-                location,
+                location: effectiveLocation,
                 radius,
                 types,
                 maxResults,
@@ -637,20 +622,17 @@ export async function getNearbyPlaces(
 
         // Build the request body according to the Places API (new) documentation
         const requestBody = {
-            includedTypes: types.length > 0
-                ? types
-                : ["restaurant", "cafe", "bar", "food"],
+            includedTypes: types.length > 0 ? types : ["restaurant"],
             locationRestriction: {
                 circle: {
                     center: {
-                        latitude: location.latitude,
-                        longitude: location.longitude,
+                        latitude: effectiveLocation.latitude,
+                        longitude: effectiveLocation.longitude,
                     },
                     radius: radius * 1000, // Convert km to meters (API expects meters)
                 },
             },
             maxResultCount: maxResults,
-            rankPreference: "DISTANCE", // Sort by distance from the location
         };
 
         console.log(
@@ -658,7 +640,6 @@ export async function getNearbyPlaces(
             JSON.stringify(requestBody),
         );
 
-        // Using the new Places API for nearby search
         const response = await fetch(
             `${PLACES_API_BASE_URL}/places:searchNearby`,
             {
@@ -667,14 +648,20 @@ export async function getNearbyPlaces(
                     "Content-Type": "application/json",
                     "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
                     "X-Goog-FieldMask":
-                        "places.id,places.displayName,places.formattedAddress,places.types,places.photos,places.location,places.rating,places.userRatingCount",
+                        "places.name,places.displayName,places.formattedAddress,places.location,places.types,places.photos,places.rating,places.userRatingCount",
                 },
                 body: JSON.stringify(requestBody),
             },
         );
 
-        console.log("Response status:", response.status);
-        console.log("Response headers:", JSON.stringify(response.headers));
+        console.log("Nearby Places API Response Status:", response.status);
+
+        // Log headers for debugging
+        const responseHeaders: Record<string, string> = {};
+        response.headers.forEach((value: string, key: string) => {
+            responseHeaders[key] = value;
+        });
+        console.log("Response headers:", JSON.stringify(responseHeaders));
 
         if (!response.ok) {
             const errorText = await response.text();
@@ -682,47 +669,116 @@ export async function getNearbyPlaces(
             throw new Error(`Places API error: ${response.status}`);
         }
 
-        // Try to log the raw response text first
-        const responseText = await response.clone().text();
-        console.log("Raw response text:", responseText);
-
-        // Check if the response is empty
-        if (!responseText || responseText === "{}") {
-            console.warn("Empty response from Places API");
-            return [];
-        }
-
-        // Try to parse as JSON
+        // Try to parse the JSON response directly
         let data;
         try {
-            data = JSON.parse(responseText);
+            data = await response.json();
+            console.log(
+                "Parsed response data:",
+                JSON.stringify(data).substring(0, 500) + "...",
+            );
+
+            // Log the structure of the first place for debugging
+            if (data.places && data.places.length > 0) {
+                console.log(
+                    "First place structure:",
+                    JSON.stringify(data.places[0], null, 2),
+                );
+            }
         } catch (e) {
             console.error("Failed to parse response as JSON:", e);
-            return [];
-        }
 
-        console.log("Parsed data:", data);
+            // Try to get the raw text as a fallback
+            try {
+                const responseText = await response.text();
+                console.log(
+                    "Raw response text:",
+                    responseText.substring(0, 200) +
+                        (responseText.length > 200 ? "..." : ""),
+                );
+                if (!responseText || responseText === "{}") {
+                    console.warn("Empty response from Places API");
+                    return getMockNearbyPlaces();
+                }
+            } catch (textError) {
+                console.error("Failed to get response text:", textError);
+            }
+
+            return getMockNearbyPlaces();
+        }
 
         // Transform the API response to match our interface
         if (data.places && Array.isArray(data.places)) {
             console.log(`Found ${data.places.length} places in response`);
-            return data.places.map((place: any) => ({
-                id: place.id,
-                name: place.displayName?.text || "Unknown Place",
-                types: place.types || [],
-                address: place.formattedAddress,
-                location: place.location
-                    ? {
-                        latitude: place.location.latitude,
-                        longitude: place.location.longitude,
+            return data.places.map((place: any, index: number) => {
+                // Log the entire place object for debugging
+                console.log(`Place ${index}:`, JSON.stringify(place, null, 2));
+
+                // Extract place ID from the resource name (format: "places/ChIJ...")
+                let placeId = null;
+                if (place.name && typeof place.name === "string") {
+                    // The name field contains the resource name like "places/ChIJd8BlQ2BZwokRAFUEcm_qrcA"
+                    // We need to extract just the place ID part after "places/"
+                    if (place.name.startsWith("places/")) {
+                        placeId = place.name.replace("places/", "");
+                    } else {
+                        placeId = place.name;
                     }
-                    : undefined,
-                photo: place.photos && place.photos.length > 0
-                    ? place.photos[0].name
-                    : undefined,
-                rating: place.rating,
-                userRatingsTotal: place.userRatingCount,
-            }));
+                }
+
+                // If we still don't have a valid place ID, generate a fallback
+                if (!placeId || placeId.length < 10) {
+                    console.warn(
+                        `Invalid place ID for ${place.displayName?.text}:`,
+                        placeId,
+                    );
+                    placeId = `anonymous_place_${
+                        Math.random().toString(36).substring(2, 11)
+                    }`;
+                }
+
+                console.log(
+                    `Extracted place ID: ${placeId} for place: ${place.displayName?.text}`,
+                );
+
+                // For debugging photos
+                if (place.photos) {
+                    console.log(
+                        `Place ${place.displayName?.text} has ${place.photos.length} photos`,
+                    );
+                    if (place.photos.length > 0) {
+                        console.log(
+                            `First photo data:`,
+                            JSON.stringify(place.photos[0]).substring(0, 100),
+                        );
+                    }
+                } else {
+                    console.log(
+                        `Place ${place.displayName?.text} has no photos`,
+                    );
+                }
+
+                return {
+                    id: placeId,
+                    name: place.displayName?.text || "Unknown Place",
+                    types: place.types || [],
+                    address: place.formattedAddress,
+                    location: place.location
+                        ? {
+                            latitude: place.location.latitude,
+                            longitude: place.location.longitude,
+                        }
+                        : undefined,
+                    photo: place.photos &&
+                            Array.isArray(place.photos) &&
+                            place.photos.length > 0 &&
+                            place.photos[0].name
+                        ? place.photos[0].name
+                        : undefined,
+                    rating: place.rating,
+                    userRatingsTotal: place.userRatingCount,
+                };
+            });
         } else {
             console.warn("No places found in API response");
             // If we don't have a valid response, return mock data for testing

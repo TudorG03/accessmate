@@ -23,8 +23,13 @@ const mmkvStorage = {
 };
 
 // Define constants
-const MARKER_COOLDOWN_TIME = 0; // No cooldown time
 const DEFAULT_CHECK_RADIUS = 100; // meters
+
+// Default location to use when no location is available
+const DEFAULT_LOCATION: MarkerLocation = {
+    latitude: 44.461555, 
+    longitude: 26.073303,
+};
 
 // Define the location store state
 interface LocationState {
@@ -47,6 +52,12 @@ interface LocationState {
     clearExpiredProcessedMarkers: () => void;
     resetProcessedMarkers: () => void;
     getProcessedMarkerIds: () => string[]; // Get list of processed marker IDs
+
+    // Updated actions
+    getLastKnownLocation: () => MarkerLocation; // Gets current location or default
+    getPersistedLocation: () => MarkerLocation | null; // Gets only persisted location, null if none
+    hasValidPersistedLocation: () => boolean; // Checks if we have a real persisted location
+    clearPersistedLocation: () => void; // Clear the persisted location for testing
 }
 
 // Create the Zustand store with persistence
@@ -62,11 +73,21 @@ export const useLocationStore = create<LocationState>()(
             processedTimestamps: {},
 
             // Actions
-            setCurrentLocation: (location) =>
-                set({ currentLocation: location }),
+            setCurrentLocation: (location) => {
+                console.log(
+                    "📍 Location Store: Setting current location:",
+                    location,
+                );
+                set({ currentLocation: location });
+            },
 
-            setLastLocationUpdateTime: (time) =>
-                set({ lastLocationUpdateTime: time }),
+            setLastLocationUpdateTime: (time) => {
+                console.log(
+                    "📍 Location Store: Setting last update time:",
+                    time,
+                );
+                set({ lastLocationUpdateTime: time });
+            },
 
             setIsTrackingEnabled: (enabled) =>
                 set({ isTrackingEnabled: enabled }),
@@ -143,6 +164,52 @@ export const useLocationStore = create<LocationState>()(
             getProcessedMarkerIds: () => {
                 return get().processedMarkers;
             },
+
+            // Get last known location or default
+            getLastKnownLocation: () => {
+                return get().currentLocation || DEFAULT_LOCATION;
+            },
+
+            // Get only persisted location, null if none exists
+            getPersistedLocation: () => {
+                const currentLocation = get().currentLocation;
+
+                // Check if this is a valid persisted location (not the default)
+                if (
+                    currentLocation &&
+                    !(Math.abs(
+                                currentLocation.latitude -
+                                    DEFAULT_LOCATION.latitude,
+                            ) < 0.000001 &&
+                        Math.abs(
+                                currentLocation.longitude -
+                                    DEFAULT_LOCATION.longitude,
+                            ) < 0.000001)
+                ) {
+                    return currentLocation;
+                }
+
+                return null;
+            },
+
+            // Check if we have a valid persisted location
+            hasValidPersistedLocation: () => {
+                const currentLocation = get().currentLocation;
+                return currentLocation !== null &&
+                    !(Math.abs(
+                                currentLocation.latitude -
+                                    DEFAULT_LOCATION.latitude,
+                            ) < 0.000001 &&
+                        Math.abs(
+                                currentLocation.longitude -
+                                    DEFAULT_LOCATION.longitude,
+                            ) < 0.000001);
+            },
+
+            // Clear the persisted location for testing
+            clearPersistedLocation: () => {
+                set({ currentLocation: null });
+            },
         }),
         {
             name: "location-storage",
@@ -153,7 +220,20 @@ export const useLocationStore = create<LocationState>()(
                 obstacleCheckRadius: state.obstacleCheckRadius,
                 processedMarkers: state.processedMarkers,
                 processedTimestamps: state.processedTimestamps,
+                currentLocation: state.currentLocation,
+                lastLocationUpdateTime: state.lastLocationUpdateTime,
             }),
+            onRehydrateStorage: () => (state) => {
+                if (state) {
+                    console.log("📍 Location Store: Rehydrated from storage:", {
+                        currentLocation: state.currentLocation,
+                        lastLocationUpdateTime: state.lastLocationUpdateTime,
+                        isTrackingEnabled: state.isTrackingEnabled,
+                    });
+                } else {
+                    console.log("📍 Location Store: No state to rehydrate");
+                }
+            },
         },
     ),
 );

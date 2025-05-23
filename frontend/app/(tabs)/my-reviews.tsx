@@ -153,6 +153,7 @@ export default function MyReviewsScreen() {
   const renderReviewItem = ({ item }: { item: Review }) => {
     // Get the correct ID to use
     const reviewId = item.id || (item as any)._id;
+    console.log(item);
 
     if (!reviewId) {
       console.warn('Review without ID:', item);
@@ -210,6 +211,13 @@ export default function MyReviewsScreen() {
               source={{ uri: item.images[0] }}
               style={{ width: '100%', height: 150, borderRadius: 8 }}
               resizeMode="cover"
+              onError={(error) => {
+                console.log(`🖼️ Review image load error:`, error);
+                console.log(`🖼️ Failed review image URI: ${item.images[0]}`);
+              }}
+              onLoad={() => {
+                console.log(`🖼️ Review image loaded successfully: ${item.images[0]?.substring(0, 50)}...`);
+              }}
             />
             {item.images.length > 1 && (
               <View className="absolute bottom-2 right-2 bg-black bg-opacity-60 px-2 py-1 rounded-full">

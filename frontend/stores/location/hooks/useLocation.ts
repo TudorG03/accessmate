@@ -20,9 +20,48 @@ export function useLocation() {
         setObstacleCheckRadius,
         clearExpiredProcessedMarkers,
         resetProcessedMarkers,
+        getLastKnownLocation,
+        getPersistedLocation,
+        hasValidPersistedLocation,
     } = useLocationStore();
 
     const [isInitializing, setIsInitializing] = useState(false);
+
+    // Ensure we have a valid location - either from store or by fetching new
+    const ensureValidLocation = useCallback(async () => {
+        console.log("Ensuring valid location is available");
+
+        // First check if we have a valid persisted location
+        if (hasValidPersistedLocation()) {
+            const persistedLocation = getPersistedLocation();
+            console.log("Using persisted location:", persistedLocation);
+            return persistedLocation!; // We know it's not null because hasValidPersistedLocation returned true
+        }
+
+        // If no valid persisted location, try to get current location from GPS
+        console.log(
+            "No valid persisted location, fetching current location from GPS",
+        );
+        try {
+            const newLocation = await getCurrentLocation();
+            if (newLocation) {
+                console.log(
+                    "Successfully got new GPS location:",
+                    newLocation.coords,
+                );
+                return {
+                    latitude: newLocation.coords.latitude,
+                    longitude: newLocation.coords.longitude,
+                };
+            }
+        } catch (error) {
+            console.warn("Failed to get GPS location:", error);
+        }
+
+        // If GPS fails, return default location
+        console.log("GPS failed, using default location");
+        return getLastKnownLocation(); // This will return the default location
+    }, [hasValidPersistedLocation, getPersistedLocation, getLastKnownLocation]);
 
     // Initialize location tracking and notifications
     const initialize = useCallback(async () => {
@@ -52,8 +91,8 @@ export function useLocation() {
                 );
             }
 
-            // Get initial location
-            await getCurrentLocation();
+            // Ensure we have a valid location
+            await ensureValidLocation();
 
             // Clear expired processed markers
             clearExpiredProcessedMarkers();
@@ -70,7 +109,12 @@ export function useLocation() {
         } finally {
             setIsInitializing(false);
         }
-    }, [isTrackingEnabled, setIsTrackingEnabled, clearExpiredProcessedMarkers]);
+    }, [
+        isTrackingEnabled,
+        setIsTrackingEnabled,
+        clearExpiredProcessedMarkers,
+        ensureValidLocation,
+    ]);
 
     // Toggle location tracking
     const toggleTracking = useCallback(async () => {
@@ -129,5 +173,6 @@ export function useLocation() {
         toggleTracking,
         updateCheckRadius,
         clearAllProcessedMarkers,
+        ensureValidLocation,
     };
 }
