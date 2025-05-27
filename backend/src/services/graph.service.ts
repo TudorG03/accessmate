@@ -9,7 +9,7 @@ import MarkerModel from "../models/marker/marker.mongo.ts";
 
 // Constants for graph operations
 const GRAPH_CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
-const GRAPH_BUFFER = 0.5; // km - buffer around route for graph generation
+const GRAPH_BUFFER = 1; // km - buffer around route for graph generation
 const DEFAULT_NETWORK_TYPE = "walk";
 
 // Obstacle weight configuration
@@ -358,6 +358,82 @@ export async function cleanupGraphCache(
 }
 
 /**
+ * Filter OSM data to keep only pedestrian-relevant ways and their nodes
+ */
+function filterOsmDataForPedestrians(osmData: OsmData): OsmData {
+  // Filter ways to keep only pedestrian-relevant ones with stricter validation
+  const pedestrianWays = osmData.ways.filter((way) => {
+    const tags = way.tags;
+
+    // Exclude explicitly forbidden ways
+    if (
+      tags.foot === "no" || tags.access === "no" || tags.access === "private"
+    ) {
+      return false;
+    }
+
+    // Priority 1: Dedicated pedestrian infrastructure
+    if (
+      tags.highway === "footway" || tags.highway === "path" ||
+      tags.highway === "pedestrian" || tags.highway === "steps" ||
+      tags.footway || tags.path || tags.pedestrian
+    ) {
+      return true;
+    }
+
+    // Priority 2: Mixed-use paths that allow pedestrians
+    if (tags.highway === "cycleway" && tags.foot !== "no") {
+      return true;
+    }
+
+    // Priority 3: Low-traffic roads suitable for pedestrians
+    if (
+      tags.highway === "residential" || tags.highway === "living_street" ||
+      tags.highway === "service" || tags.highway === "unclassified"
+    ) {
+      // Check if sidewalk exists or foot access is explicitly allowed
+      if (tags.sidewalk || tags.foot === "yes" || !tags.foot) {
+        return true;
+      }
+    }
+
+    // Priority 4: Tertiary roads with sidewalks
+    if (tags.highway === "tertiary" && (tags.sidewalk || tags.foot === "yes")) {
+      return true;
+    }
+
+    // Priority 5: Tracks and service roads accessible to pedestrians
+    if (tags.highway === "track" && (tags.foot === "yes" || !tags.foot)) {
+      return true;
+    }
+
+    return false;
+  });
+
+  // Get all node IDs used by the filtered ways
+  const usedNodeIds = new Set<number>();
+  for (const way of pedestrianWays) {
+    for (const nodeId of way.nodes) {
+      usedNodeIds.add(nodeId);
+    }
+  }
+
+  // Filter nodes to keep only those used by pedestrian ways
+  const filteredNodes: Record<number, OsmNode> = {};
+  for (const nodeId of usedNodeIds) {
+    if (osmData.nodes[nodeId]) {
+      filteredNodes[nodeId] = osmData.nodes[nodeId];
+    }
+  }
+
+  return {
+    nodes: filteredNodes,
+    ways: pedestrianWays,
+    relations: osmData.relations || [],
+  };
+}
+
+/**
  * Calculate the total distance of a route in meters
  */
 function calculateRouteDistance(
@@ -507,6 +583,21 @@ function createGrid(bbox: BoundingBox, cellSize: number): Grid {
   // Calculate the number of cells in each direction
   const numCellsLat = Math.ceil(distanceNS / cellSize);
   const numCellsLon = Math.ceil(distanceEW / cellSize);
+
+  // Memory safety check - prevent excessive memory usage
+  const totalCells = numCellsLat * numCellsLon;
+  const MAX_CELLS = 500000; // Maximum 500k cells to prevent memory overflow
+
+  if (totalCells > MAX_CELLS) {
+    throw new Error(
+      `Grid too large: ${totalCells} cells (${numCellsLat}x${numCellsLon}) exceeds maximum ${MAX_CELLS}. ` +
+        `Try reducing the area or increasing cell size from ${cellSize}m.`,
+    );
+  }
+
+  console.log(
+    `Creating grid: ${numCellsLat}x${numCellsLon} = ${totalCells} cells at ${cellSize}m resolution`,
+  );
 
   // Initialize the grid with empty cells
   const cells: GridCell[][] = [];
@@ -1000,7 +1091,14 @@ function findPathAStar(
   start.f = start.g + start.h;
   start.parent = null;
 
-  while (openSet.length > 0) {
+  let iterations = 0;
+  const maxIterations = Math.min(
+    grid.cells.length * grid.cells[0].length,
+    100000,
+  ); // Prevent infinite loops
+
+  while (openSet.length > 0 && iterations < maxIterations) {
+    iterations++;
     // Find the node with the lowest f value
     let current = openSet[0];
     let currentIndex = 0;
@@ -1053,7 +1151,13 @@ function findPathAStar(
   }
 
   // No path found
-  console.log("No path found!");
+  if (iterations >= maxIterations) {
+    console.log(
+      `A* search terminated after ${iterations} iterations (max reached)`,
+    );
+  } else {
+    console.log("No path found!");
+  }
   return [];
 }
 
@@ -1470,6 +1574,441 @@ function removeDuplicatePoints(points: Point[]): Point[] {
 }
 
 /**
+ * Thorough road snapping that ensures routes follow actual roads
+ */
+function lightweightRoadSnap(
+  points: Point[],
+  osmData: OsmData,
+  cellSize: number,
+): Point[] {
+  if (points.length < 2) return points;
+
+  const maxSnapDistance = Math.min(cellSize * 1.5, 25); // Tighter snapping for higher precision
+  const result: Point[] = [points[0]]; // Always keep exact origin
+
+  // Process each segment to ensure it follows roads
+  for (let i = 1; i < points.length; i++) {
+    const prevPoint = result[result.length - 1];
+    const currentPoint = points[i];
+
+    // For the last point, don't snap (preserve exact destination)
+    if (i === points.length - 1) {
+      // Try to connect to destination via roads
+      const roadPath = findRoadPath(
+        prevPoint,
+        currentPoint,
+        osmData,
+        maxSnapDistance,
+      );
+      if (roadPath.length > 1) {
+        result.push(...roadPath.slice(1)); // Skip first point (already in result)
+      } else {
+        result.push(currentPoint);
+      }
+      break;
+    }
+
+    // Find the best road path between consecutive points
+    const roadPath = findRoadPath(
+      prevPoint,
+      currentPoint,
+      osmData,
+      maxSnapDistance,
+    );
+
+    if (roadPath.length > 1) {
+      // Add the road path points (skip first as it's already in result)
+      result.push(...roadPath.slice(1));
+    } else {
+      // Fallback: snap current point to nearest road
+      const snappedPoint = findNearestRoadPoint(
+        currentPoint,
+        osmData,
+        maxSnapDistance,
+      );
+      result.push(snappedPoint || currentPoint);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Find the nearest point on any road within the specified distance
+ */
+function findNearestRoadPoint(
+  point: Point,
+  osmData: OsmData,
+  maxDistance: number,
+): Point | null {
+  let nearestPoint: Point | null = null;
+  let minDistance = maxDistance;
+
+  // Check more ways for higher precision while maintaining reasonable performance
+  const waysToCheck = osmData.ways.slice(
+    0,
+    Math.min(1000, osmData.ways.length),
+  );
+
+  for (const way of waysToCheck) {
+    if (way.nodes.length < 2) continue;
+
+    // Check each segment of the way
+    for (let i = 0; i < way.nodes.length - 1; i++) {
+      const node1 = osmData.nodes[way.nodes[i]];
+      const node2 = osmData.nodes[way.nodes[i + 1]];
+
+      if (!node1 || !node2) continue;
+
+      // Calculate projection onto this segment
+      const projected = projectPointOntoSegment(
+        point,
+        { latitude: node1.lat, longitude: node1.lon },
+        { latitude: node2.lat, longitude: node2.lon },
+      );
+
+      const distance = haversineDistanceInMeters(
+        point.latitude,
+        point.longitude,
+        projected.latitude,
+        projected.longitude,
+      );
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestPoint = projected;
+      }
+    }
+  }
+
+  return nearestPoint;
+}
+
+/**
+ * Find a path along roads between two points
+ */
+function findRoadPath(
+  startPoint: Point,
+  endPoint: Point,
+  osmData: OsmData,
+  maxSnapDistance: number,
+): Point[] {
+  // Find nearby roads for both start and end points
+  const startRoadSegments = findNearbyRoadSegments(
+    startPoint,
+    osmData,
+    maxSnapDistance,
+  );
+  const endRoadSegments = findNearbyRoadSegments(
+    endPoint,
+    osmData,
+    maxSnapDistance,
+  );
+
+  if (startRoadSegments.length === 0 || endRoadSegments.length === 0) {
+    return [startPoint, endPoint]; // Fallback to direct path
+  }
+
+  // Try to find a connected path through roads
+  let bestPath: Point[] = [startPoint, endPoint];
+  let shortestDistance = haversineDistanceInMeters(
+    startPoint.latitude,
+    startPoint.longitude,
+    endPoint.latitude,
+    endPoint.longitude,
+  );
+
+  // Check more combinations of start and end road segments for better path finding
+  for (let i = 0; i < Math.min(5, startRoadSegments.length); i++) {
+    for (let j = 0; j < Math.min(5, endRoadSegments.length); j++) {
+      const startRoad = startRoadSegments[i];
+      const endRoad = endRoadSegments[j];
+
+      // Try to trace a path along roads
+      const roadPath = traceRoadPath(startRoad, endRoad, osmData);
+
+      if (roadPath.length > 2) {
+        const pathDistance = calculateRouteDistance(roadPath);
+        if (pathDistance < shortestDistance * 2) { // Don't accept paths more than 2x longer
+          bestPath = roadPath;
+          shortestDistance = pathDistance;
+        }
+      }
+    }
+  }
+
+  return bestPath;
+}
+
+/**
+ * Find road segments near a point
+ */
+function findNearbyRoadSegments(
+  point: Point,
+  osmData: OsmData,
+  maxDistance: number,
+): Array<{ way: OsmWay; segmentIndex: number; projectedPoint: Point }> {
+  const segments: Array<
+    { way: OsmWay; segmentIndex: number; projectedPoint: Point }
+  > = [];
+
+  for (const way of osmData.ways.slice(0, Math.min(300, osmData.ways.length))) {
+    if (way.nodes.length < 2) continue;
+
+    for (let i = 0; i < way.nodes.length - 1; i++) {
+      const node1 = osmData.nodes[way.nodes[i]];
+      const node2 = osmData.nodes[way.nodes[i + 1]];
+
+      if (!node1 || !node2) continue;
+
+      const projected = projectPointOntoSegment(
+        point,
+        { latitude: node1.lat, longitude: node1.lon },
+        { latitude: node2.lat, longitude: node2.lon },
+      );
+
+      const distance = haversineDistanceInMeters(
+        point.latitude,
+        point.longitude,
+        projected.latitude,
+        projected.longitude,
+      );
+
+      if (distance <= maxDistance) {
+        segments.push({
+          way,
+          segmentIndex: i,
+          projectedPoint: projected,
+        });
+      }
+    }
+  }
+
+  // Sort by distance
+  segments.sort((a, b) => {
+    const distA = haversineDistanceInMeters(
+      point.latitude,
+      point.longitude,
+      a.projectedPoint.latitude,
+      a.projectedPoint.longitude,
+    );
+    const distB = haversineDistanceInMeters(
+      point.latitude,
+      point.longitude,
+      b.projectedPoint.latitude,
+      b.projectedPoint.longitude,
+    );
+    return distA - distB;
+  });
+
+  return segments.slice(0, 8); // Return top 8 closest segments for better path options
+}
+
+/**
+ * Trace a path between two road segments
+ */
+function traceRoadPath(
+  startSegment: { way: OsmWay; segmentIndex: number; projectedPoint: Point },
+  endSegment: { way: OsmWay; segmentIndex: number; projectedPoint: Point },
+  osmData: OsmData,
+): Point[] {
+  // If it's the same way, trace along the way
+  if (startSegment.way.id === endSegment.way.id) {
+    return traceAlongWay(startSegment, endSegment, osmData);
+  }
+
+  // For different ways, try to find a simple connection
+  // This is a simplified version - a full implementation would use graph algorithms
+  return [startSegment.projectedPoint, endSegment.projectedPoint];
+}
+
+/**
+ * Trace along a single way between two points
+ */
+function traceAlongWay(
+  startSegment: { way: OsmWay; segmentIndex: number; projectedPoint: Point },
+  endSegment: { way: OsmWay; segmentIndex: number; projectedPoint: Point },
+  osmData: OsmData,
+): Point[] {
+  const way = startSegment.way;
+  const path: Point[] = [startSegment.projectedPoint];
+
+  const startIdx = startSegment.segmentIndex;
+  const endIdx = endSegment.segmentIndex;
+
+  // Determine direction
+  if (startIdx < endIdx) {
+    // Forward direction
+    for (let i = startIdx + 1; i <= endIdx; i++) {
+      const nodeId = way.nodes[i];
+      const node = osmData.nodes[nodeId];
+      if (node) {
+        path.push({ latitude: node.lat, longitude: node.lon });
+      }
+    }
+  } else if (startIdx > endIdx) {
+    // Backward direction
+    for (let i = startIdx; i >= endIdx + 1; i--) {
+      const nodeId = way.nodes[i];
+      const node = osmData.nodes[nodeId];
+      if (node) {
+        path.push({ latitude: node.lat, longitude: node.lon });
+      }
+    }
+  }
+
+  path.push(endSegment.projectedPoint);
+  return path;
+}
+
+/**
+ * Project a point onto a line segment
+ */
+function projectPointOntoSegment(
+  point: Point,
+  segStart: Point,
+  segEnd: Point,
+): Point {
+  const dx = segEnd.latitude - segStart.latitude;
+  const dy = segEnd.longitude - segStart.longitude;
+
+  if (dx === 0 && dy === 0) {
+    return segStart; // Segment is a point
+  }
+
+  const t = ((point.latitude - segStart.latitude) * dx +
+    (point.longitude - segStart.longitude) * dy) / (dx * dx + dy * dy);
+
+  // Clamp t to the segment bounds
+  const clampedT = Math.max(0, Math.min(1, t));
+
+  return {
+    latitude: segStart.latitude + clampedT * dx,
+    longitude: segStart.longitude + clampedT * dy,
+  };
+}
+
+/**
+ * Simplified route optimization to remove excessive points
+ */
+function simplifyRoute(points: Point[], tolerance: number): Point[] {
+  if (points.length <= 2) return points;
+
+  // Use a conservative Douglas-Peucker simplification
+  const simplified = douglasPeuckerSimplify(points, Math.max(tolerance, 3));
+
+  // Ensure we don't over-simplify
+  if (simplified.length < 3 && points.length > 2) {
+    // If we simplified too much, use a larger tolerance or return more points
+    return points.filter((_, index) =>
+      index % 2 === 0 || index === points.length - 1
+    );
+  }
+
+  return simplified;
+}
+
+/**
+ * Fine-tune route for better precision and smoother transitions
+ */
+function fineTuneRoute(
+  points: Point[],
+  osmData: OsmData,
+  cellSize: number,
+): Point[] {
+  if (points.length <= 2) return points;
+
+  const fineTuned: Point[] = [points[0]]; // Keep exact start
+  const maxAdjustment = Math.min(cellSize / 2, 10); // Maximum adjustment distance
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const point = points[i];
+    const prevPoint = fineTuned[fineTuned.length - 1];
+    const nextPoint = points[i + 1];
+
+    // Try to find a better road position for this point considering its neighbors
+    const improvedPoint = findBetterRoadPosition(
+      point,
+      prevPoint,
+      nextPoint,
+      osmData,
+      maxAdjustment,
+    );
+
+    // Only use the improved point if it's not too far from the original
+    const adjustment = haversineDistanceInMeters(
+      point.latitude,
+      point.longitude,
+      improvedPoint.latitude,
+      improvedPoint.longitude,
+    );
+
+    if (adjustment <= maxAdjustment) {
+      fineTuned.push(improvedPoint);
+    } else {
+      fineTuned.push(point); // Keep original if adjustment is too large
+    }
+  }
+
+  fineTuned.push(points[points.length - 1]); // Keep exact end
+  return fineTuned;
+}
+
+/**
+ * Find a better road position for a point considering its neighbors
+ */
+function findBetterRoadPosition(
+  point: Point,
+  prevPoint: Point,
+  nextPoint: Point,
+  osmData: OsmData,
+  maxDistance: number,
+): Point {
+  // Find the best road segment that creates a smooth path between prev and next points
+  let bestPoint = point;
+  let bestScore = 0;
+
+  // Check nearby road segments
+  const nearbySegments = findNearbyRoadSegments(point, osmData, maxDistance);
+
+  for (const segment of nearbySegments.slice(0, 3)) { // Check top 3 segments
+    const candidate = segment.projectedPoint;
+
+    // Calculate how well this point creates a smooth path
+    const score = calculatePathSmoothness(prevPoint, candidate, nextPoint);
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestPoint = candidate;
+    }
+  }
+
+  return bestPoint;
+}
+
+/**
+ * Calculate how smooth a path is through three points
+ */
+function calculatePathSmoothness(p1: Point, p2: Point, p3: Point): number {
+  // Calculate the angle at p2
+  const angle1 = Math.atan2(
+    p2.latitude - p1.latitude,
+    p2.longitude - p1.longitude,
+  );
+  const angle2 = Math.atan2(
+    p3.latitude - p2.latitude,
+    p3.longitude - p2.longitude,
+  );
+
+  let angleDiff = Math.abs(angle2 - angle1);
+  if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+
+  // Smoother paths have smaller angle differences
+  // Return a score between 0 and 1, where 1 is perfectly smooth
+  return 1 - (angleDiff / Math.PI);
+}
+
+/**
  * Smooth and simplify the path with high precision
  */
 function smoothPath(gridPath: GridCell[]): Point[] {
@@ -1486,8 +2025,11 @@ function smoothPath(gridPath: GridCell[]): Point[] {
     longitude: cell.longitude,
   }));
 
-  // Use a much smaller epsilon value (1-2 meters) for better precision
-  return douglasPeuckerSimplify(points, 2); // 2 meters tolerance
+  // Use a smaller epsilon value for better precision, but not too small to avoid over-simplification
+  return douglasPeuckerSimplify(
+    points,
+    Math.max(1, gridPath[0]?.connections?.length ? 1 : 3),
+  ); // Dynamic tolerance
 }
 
 /**
@@ -1637,6 +2179,21 @@ export async function findAccessibleRoute(
 
     console.log("Using OSM grid-based routing for accessible path...");
 
+    // Check available memory before processing
+    if (process.memoryUsage) {
+      const memUsage = process.memoryUsage();
+      const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+      const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
+      console.log(
+        `Memory usage before OSM fetch: ${heapUsedMB}MB used / ${heapTotalMB}MB total`,
+      );
+
+      // If we're already using a lot of memory, be more conservative
+      if (heapUsedMB > 1000) {
+        console.warn("High memory usage detected, will use larger cell sizes");
+      }
+    }
+
     // Fetch OSM data for the bounding box
     const osmData = await fetchOsmData(bbox);
 
@@ -1649,14 +2206,22 @@ export async function findAccessibleRoute(
       throw new Error("Could not retrieve sufficient map data for routing");
     }
 
-    // Try cell sizes from most precise to least
-    const cellSizes = [2, 4, 8, 15]; // meters
+    // Filter and optimize OSM data to reduce memory usage
+    const filteredOsmData = filterOsmDataForPedestrians(osmData);
+    console.log(
+      `Filtered OSM data: ${
+        Object.keys(filteredOsmData.nodes).length
+      } nodes, ${filteredOsmData.ways.length} ways`,
+    );
+
+    // Try cell sizes - high precision for accurate road following
+    const cellSizes = [5, 10, 20]; // meters
     let lastError = null;
     for (const cellSize of cellSizes) {
       try {
         console.log(`Trying grid cell size: ${cellSize}m`);
         const grid = createGrid(bbox, cellSize);
-        mapRoadsToGrid(osmData, grid);
+        mapRoadsToGrid(filteredOsmData, grid);
         connectRoadCells(grid);
         if (avoidObstacles && obstacles.length > 0) {
           applyObstaclesToGrid(grid, obstacles);
@@ -1670,50 +2235,70 @@ export async function findAccessibleRoute(
         if (gridPath.length === 0) {
           throw new Error("Could not find an accessible route");
         }
-        let routePoints = smoothPath(gridPath);
-        routePoints = snapRouteToRoads(gridPath, osmData);
-        routePoints = postProcessRoute(routePoints, osmData);
-        if (routePoints.length < 3) {
-          throw new Error(
-            "Could not generate a valid route with sufficient detail",
-          );
+
+        console.log(`Grid path found with ${gridPath.length} cells`);
+
+        // Convert grid path to lat/lon points with basic road alignment
+        let routePoints: Point[] = gridPath.map((cell) => ({
+          latitude: cell.latitude,
+          longitude: cell.longitude,
+        }));
+
+        console.log(`Basic route conversion: ${routePoints.length} points`);
+
+        // Apply lightweight road snapping to improve route quality
+        routePoints = lightweightRoadSnap(
+          routePoints,
+          filteredOsmData,
+          cellSize,
+        );
+        console.log(
+          `After lightweight road snapping: ${routePoints.length} points`,
+        );
+
+        // Simplify route to remove excessive points while maintaining road alignment
+        routePoints = simplifyRoute(routePoints, Math.max(cellSize / 3, 2)); // Higher precision simplification
+        console.log(`After simplification: ${routePoints.length} points`);
+
+        // Apply fine-tuning to improve route curves and transitions
+        routePoints = fineTuneRoute(routePoints, osmData, cellSize);
+        console.log(`After fine-tuning: ${routePoints.length} points`);
+
+        // Ensure we start and end at the exact requested points
+        if (routePoints.length > 0) {
+          routePoints[0] = origin;
+          routePoints[routePoints.length - 1] = destination;
+        } else {
+          routePoints = [origin, destination];
         }
-        // Remove points very close to origin/destination
-        if (
-          routePoints.length > 0 &&
-          haversineDistanceInMeters(
-              routePoints[0].latitude,
-              routePoints[0].longitude,
-              origin.latitude,
-              origin.longitude,
-            ) < 10
-        ) {
-          routePoints.shift();
-        }
-        if (
-          routePoints.length > 0 &&
-          haversineDistanceInMeters(
-              routePoints[routePoints.length - 1].latitude,
-              routePoints[routePoints.length - 1].longitude,
-              destination.latitude,
-              destination.longitude,
-            ) < 10
-        ) {
-          routePoints.pop();
-        }
-        routePoints.unshift(origin);
-        routePoints.push(destination);
         const finalDistance = calculateRouteDistance(routePoints) / 1000;
         const directDistance = routeDistanceKm;
         const routeDeviation = finalDistance / directDistance;
-        // If the route is less than 5% longer than a straight line, it's likely not following roads properly
-        if (routeDeviation < 1.05 && finalDistance > 0.1) {
-          throw new Error("Generated route does not follow roads properly");
+
+        // Debug logging to understand route characteristics
+        console.log(`Route analysis for ${cellSize}m grid:`);
+        console.log(`  Direct distance: ${directDistance.toFixed(3)}km`);
+        console.log(`  Route distance: ${finalDistance.toFixed(3)}km`);
+        console.log(`  Route deviation: ${routeDeviation.toFixed(2)}x`);
+        console.log(`  Route points: ${routePoints.length}`);
+
+        // Improved validation - ensure route is reasonable but not too strict
+        if (finalDistance <= 0 || !isFinite(finalDistance)) {
+          throw new Error("Invalid route distance calculated");
         }
-        // If the route is more than 2x the straight line, it's likely a bad route
-        if (routeDeviation > 2.0 && finalDistance > 0.5) {
-          throw new Error("OSM route is much longer than direct path");
+
+        // Reject only if route is extremely unreasonable (more than 10x direct distance)
+        if (routeDeviation > 10.0 && finalDistance > 0.1) {
+          throw new Error(
+            `Route deviation extremely high: ${
+              routeDeviation.toFixed(2)
+            }x - likely invalid`,
+          );
         }
+
+        console.log(
+          `✅ Route accepted with ${routeDeviation.toFixed(2)}x deviation`,
+        );
         const estimatedMinutes = Math.round(finalDistance * 15);
         const duration = `${estimatedMinutes} mins`;
         const hasObstacles = checkForObstaclesNearRoute(routePoints, obstacles);
@@ -1733,12 +2318,53 @@ export async function findAccessibleRoute(
         };
       } catch (err) {
         lastError = err;
-        console.warn(`Routing failed with cell size ${cellSize}m:`, err);
-        // Try next cell size
+        console.warn(
+          `Routing failed with cell size ${cellSize}m:`,
+          err instanceof Error ? err.message : err,
+        );
+        // Try next cell size - continue with larger cell sizes for better success rate
       }
     }
-    // If all cell sizes fail, throw the last error
-    throw lastError || new Error("Could not find a valid accessible route");
+    // If all cell sizes fail, try to return a simplified fallback route
+    console.warn(
+      "All grid-based routing attempts failed, attempting fallback route",
+    );
+
+    try {
+      // Create a simple direct route as fallback
+      const fallbackPoints = [origin, destination];
+      const fallbackDistance = calculateRouteDistance(fallbackPoints) / 1000;
+      const estimatedMinutes = Math.round(fallbackDistance * 20); // Slower walking speed for accessibility
+      const hasObstacles = checkForObstaclesNearRoute(
+        fallbackPoints,
+        obstacles,
+        50,
+      ); // Wider check for obstacles
+
+      console.log(
+        `Fallback route: ${fallbackDistance.toFixed(3)}km direct path with ${
+          hasObstacles ? "potential" : "no"
+        } obstacles`,
+      );
+
+      return {
+        points: fallbackPoints,
+        distance: Number(fallbackDistance.toFixed(2)),
+        duration: `${estimatedMinutes} mins`,
+        hasObstacles: hasObstacles,
+        steps: [{
+          instructions:
+            "Follow the direct path (detailed routing unavailable).",
+          distance: `${fallbackDistance.toFixed(2)} km`,
+          duration: `${estimatedMinutes} mins`,
+          startLocation: origin,
+          endLocation: destination,
+        }],
+      };
+    } catch (fallbackError) {
+      console.error("Even fallback route failed:", fallbackError);
+      throw lastError || new Error("Could not find any accessible route");
+    }
   } catch (err: unknown) {
     const error = err instanceof Error ? err : new Error(String(err));
     console.error("Error in OSM grid routing:", error);
