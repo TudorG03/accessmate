@@ -1125,8 +1125,50 @@ function findPathAStar(
       // Skip if neighbor is in closed set
       if (closedSet.has(`${neighbor.x},${neighbor.y}`)) continue;
 
-      // Calculate tentative g score
-      const weight = 1 + (neighbor.obstacleWeight || 0);
+      // Calculate tentative g score with enhanced road-aware weighting
+      let weight = 1 + (neighbor.obstacleWeight || 0);
+
+      // Add road quality bonus/penalty
+      if (neighbor.roadType) {
+        switch (neighbor.roadType) {
+          case "footway":
+          case "pedestrian":
+            weight *= 0.8; // Prefer dedicated pedestrian paths
+            break;
+          case "path":
+            weight *= 0.9; // Prefer paths
+            break;
+          case "residential":
+            weight *= 1.1; // Slightly less preferred
+            break;
+          case "service":
+            weight *= 1.2; // Less preferred
+            break;
+          default:
+            weight *= 1.0;
+        }
+      }
+
+      // Add smoothness bonus for straight-line connections
+      if (current.parent) {
+        const currentAngle = Math.atan2(
+          neighbor.y - current.y,
+          neighbor.x - current.x,
+        );
+        const parentAngle = Math.atan2(
+          current.y - current.parent.y,
+          current.x - current.parent.x,
+        );
+        const angleDiff = Math.abs(currentAngle - parentAngle);
+        const normalizedAngleDiff = Math.min(
+          angleDiff,
+          2 * Math.PI - angleDiff,
+        );
+
+        // Reward straight paths and penalize sharp turns
+        weight *= 1 + normalizedAngleDiff * 0.1;
+      }
+
       const tentativeG = (current.g || 0) + weight;
 
       // Check if neighbor is already in open set
@@ -1583,7 +1625,7 @@ function lightweightRoadSnap(
 ): Point[] {
   if (points.length < 2) return points;
 
-  const maxSnapDistance = Math.min(cellSize * 1.5, 25); // Tighter snapping for higher precision
+  const maxSnapDistance = Math.min(cellSize * 1.2, 15); // Ultra-tight snapping for maximum precision
   const result: Point[] = [points[0]]; // Always keep exact origin
 
   // Process each segment to ensure it follows roads
@@ -1644,10 +1686,10 @@ function findNearestRoadPoint(
   let nearestPoint: Point | null = null;
   let minDistance = maxDistance;
 
-  // Check more ways for higher precision while maintaining reasonable performance
+  // Check all ways for maximum precision in ultra-precision mode
   const waysToCheck = osmData.ways.slice(
     0,
-    Math.min(1000, osmData.ways.length),
+    Math.min(2000, osmData.ways.length),
   );
 
   for (const way of waysToCheck) {
@@ -1718,9 +1760,9 @@ function findRoadPath(
     endPoint.longitude,
   );
 
-  // Check more combinations of start and end road segments for better path finding
-  for (let i = 0; i < Math.min(5, startRoadSegments.length); i++) {
-    for (let j = 0; j < Math.min(5, endRoadSegments.length); j++) {
+  // Check maximum combinations for ultra-precise path finding
+  for (let i = 0; i < Math.min(8, startRoadSegments.length); i++) {
+    for (let j = 0; j < Math.min(8, endRoadSegments.length); j++) {
       const startRoad = startRoadSegments[i];
       const endRoad = endRoadSegments[j];
 
@@ -1752,7 +1794,7 @@ function findNearbyRoadSegments(
     { way: OsmWay; segmentIndex: number; projectedPoint: Point }
   > = [];
 
-  for (const way of osmData.ways.slice(0, Math.min(300, osmData.ways.length))) {
+  for (const way of osmData.ways.slice(0, Math.min(500, osmData.ways.length))) {
     if (way.nodes.length < 2) continue;
 
     for (let i = 0; i < way.nodes.length - 1; i++) {
@@ -1801,7 +1843,7 @@ function findNearbyRoadSegments(
     return distA - distB;
   });
 
-  return segments.slice(0, 8); // Return top 8 closest segments for better path options
+  return segments.slice(0, 12); // Return top 12 closest segments for maximum path precision
 }
 
 /**
@@ -2006,6 +2048,188 @@ function calculatePathSmoothness(p1: Point, p2: Point, p3: Point): number {
   // Smoother paths have smaller angle differences
   // Return a score between 0 and 1, where 1 is perfectly smooth
   return 1 - (angleDiff / Math.PI);
+}
+
+/**
+ * Enhanced road alignment for ultra-precise path following
+ */
+function enhancedRoadAlignment(
+  points: Point[],
+  osmData: OsmData,
+  cellSize: number,
+): Point[] {
+  if (points.length <= 2) return points;
+
+  const enhanced: Point[] = [points[0]]; // Keep exact start
+  const ultraPrecisionDistance = Math.min(cellSize, 5); // Very tight alignment
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const point = points[i];
+    const prevPoint = enhanced[enhanced.length - 1];
+    const nextPoint = points[i + 1];
+
+    // Find the most precise road position using multiple criteria
+    const bestAlignment = findOptimalRoadAlignment(
+      point,
+      prevPoint,
+      nextPoint,
+      osmData,
+      ultraPrecisionDistance,
+    );
+
+    enhanced.push(bestAlignment);
+  }
+
+  enhanced.push(points[points.length - 1]); // Keep exact end
+
+  // Apply micro-adjustments for ultra-smooth transitions
+  return applyMicroAdjustments(enhanced, osmData, cellSize);
+}
+
+/**
+ * Find optimal road alignment using multiple precision criteria
+ */
+function findOptimalRoadAlignment(
+  point: Point,
+  prevPoint: Point,
+  nextPoint: Point,
+  osmData: OsmData,
+  maxDistance: number,
+): Point {
+  const candidates = findNearbyRoadSegments(point, osmData, maxDistance);
+
+  if (candidates.length === 0) return point;
+
+  let bestPoint = point;
+  let bestScore = -1;
+
+  for (const candidate of candidates.slice(0, 5)) { // Check top 5 candidates
+    const candidatePoint = candidate.projectedPoint;
+
+    // Multi-criteria scoring for optimal positioning
+    const smoothnessScore = calculatePathSmoothness(
+      prevPoint,
+      candidatePoint,
+      nextPoint,
+    );
+    const distanceScore = 1 - (haversineDistanceInMeters(
+      point.latitude,
+      point.longitude,
+      candidatePoint.latitude,
+      candidatePoint.longitude,
+    ) / maxDistance);
+    const roadQualityScore = getRoadQualityScore(candidate.way);
+
+    // Weighted combined score
+    const combinedScore = (smoothnessScore * 0.4) + (distanceScore * 0.4) +
+      (roadQualityScore * 0.2);
+
+    if (combinedScore > bestScore) {
+      bestScore = combinedScore;
+      bestPoint = candidatePoint;
+    }
+  }
+
+  return bestPoint;
+}
+
+/**
+ * Calculate road quality score for path optimization
+ */
+function getRoadQualityScore(way: OsmWay): number {
+  const tags = way.tags;
+
+  // Prioritize pedestrian-dedicated infrastructure
+  if (tags.highway === "footway" || tags.highway === "pedestrian") return 1.0;
+  if (tags.highway === "path") return 0.9;
+  if (tags.highway === "cycleway" && tags.foot !== "no") return 0.8;
+  if (tags.highway === "living_street") return 0.7;
+  if (tags.highway === "residential" && tags.sidewalk) return 0.6;
+  if (tags.highway === "service") return 0.5;
+  if (tags.highway === "track") return 0.4;
+
+  return 0.3; // Default for other road types
+}
+
+/**
+ * Apply micro-adjustments for ultra-smooth path transitions
+ */
+function applyMicroAdjustments(
+  points: Point[],
+  osmData: OsmData,
+  cellSize: number,
+): Point[] {
+  if (points.length <= 2) return points;
+
+  const adjusted: Point[] = [points[0]];
+  const microAdjustmentRadius = Math.min(cellSize / 2, 3); // Very small adjustments
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const point = points[i];
+    const prevPoint = adjusted[adjusted.length - 1];
+    const nextPoint = points[i + 1];
+
+    // Look for tiny improvements in road alignment
+    const microImprovement = findMicroRoadImprovement(
+      point,
+      prevPoint,
+      nextPoint,
+      osmData,
+      microAdjustmentRadius,
+    );
+
+    adjusted.push(microImprovement);
+  }
+
+  adjusted.push(points[points.length - 1]);
+  return adjusted;
+}
+
+/**
+ * Find micro-improvements in road positioning
+ */
+function findMicroRoadImprovement(
+  point: Point,
+  prevPoint: Point,
+  nextPoint: Point,
+  osmData: OsmData,
+  radius: number,
+): Point {
+  // Sample points in a small circle around the current point
+  const samplePoints: Point[] = [];
+  const numSamples = 8;
+
+  for (let i = 0; i < numSamples; i++) {
+    const angle = (i / numSamples) * 2 * Math.PI;
+    const deltaLat = (radius / 111000) * Math.cos(angle); // Approximate meters to degrees
+    const deltaLon =
+      (radius / (111000 * Math.cos(point.latitude * Math.PI / 180))) *
+      Math.sin(angle);
+
+    samplePoints.push({
+      latitude: point.latitude + deltaLat,
+      longitude: point.longitude + deltaLon,
+    });
+  }
+
+  let bestPoint = point;
+  let bestScore = calculatePathSmoothness(prevPoint, point, nextPoint);
+
+  // Test each sample point
+  for (const samplePoint of samplePoints) {
+    // Find nearest road to this sample point
+    const nearestRoad = findNearestRoadPoint(samplePoint, osmData, radius);
+
+    if (nearestRoad) {
+      const score = calculatePathSmoothness(prevPoint, nearestRoad, nextPoint);
+      if (score > bestScore) {
+        bestScore = score;
+        bestPoint = nearestRoad;
+      }
+    }
+  }
+
+  return bestPoint;
 }
 
 /**
@@ -2214,8 +2438,8 @@ export async function findAccessibleRoute(
       } nodes, ${filteredOsmData.ways.length} ways`,
     );
 
-    // Try cell sizes - high precision for accurate road following
-    const cellSizes = [5, 10, 20]; // meters
+    // Try cell sizes - ultra-high precision for maximum accuracy
+    const cellSizes = [2, 4, 8]; // meters
     let lastError = null;
     for (const cellSize of cellSizes) {
       try {
@@ -2257,12 +2481,20 @@ export async function findAccessibleRoute(
         );
 
         // Simplify route to remove excessive points while maintaining road alignment
-        routePoints = simplifyRoute(routePoints, Math.max(cellSize / 3, 2)); // Higher precision simplification
+        routePoints = simplifyRoute(routePoints, Math.max(cellSize / 6, 0.5)); // Ultra-high precision simplification
         console.log(`After simplification: ${routePoints.length} points`);
 
-        // Apply fine-tuning to improve route curves and transitions
-        routePoints = fineTuneRoute(routePoints, osmData, cellSize);
+        // Apply multi-pass fine-tuning for maximum precision
+        routePoints = fineTuneRoute(routePoints, filteredOsmData, cellSize);
         console.log(`After fine-tuning: ${routePoints.length} points`);
+
+        // Apply additional precision pass for ultra-accurate road following
+        routePoints = enhancedRoadAlignment(
+          routePoints,
+          filteredOsmData,
+          cellSize,
+        );
+        console.log(`After enhanced alignment: ${routePoints.length} points`);
 
         // Ensure we start and end at the exact requested points
         if (routePoints.length > 0) {
