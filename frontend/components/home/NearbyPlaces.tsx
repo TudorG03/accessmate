@@ -5,14 +5,14 @@ import { formatDistance } from "@/utils/distanceUtils";
 import useAuth from "../../stores/auth/hooks/useAuth";
 import { getNearbyPlaces, NearbyPlace, getPlacePhoto } from "../../services/places.service";
 import { PlaceType } from "@/types/auth.types";
-import { useLocationContext } from "@/components/LocationProvider";
+import { useLocation } from "@/stores/location/hooks/useLocation";
 import { router } from "expo-router";
 import { useLocationStore } from "@/stores/location/location.store";
 
 const NearbyPlaces = () => {
     const { colors, isDark } = useTheme();
     const { user } = useAuth();
-    const { ensureValidLocation } = useLocationContext();
+    const { ensureValidLocation } = useLocation();
     const [places, setPlaces] = useState<NearbyPlace[]>([]);
     const [placeImages, setPlaceImages] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
@@ -102,9 +102,9 @@ const NearbyPlaces = () => {
             // Check user's preference first
             if (useCurrentLocation) {
                 // Priority 1: Try to get current GPS location (when user prefers current location)
+                // Note: Location should already be initialized by LocationProvider
                 try {
-                    console.log('🌍 User prefers current location - attempting to get GPS...');
-                    await ensureValidLocation();
+                    console.log('🌍 User prefers current location - checking location store...');
 
                     // Get the current location from the location store
                     const locationStore = useLocationStore.getState();
@@ -116,7 +116,19 @@ const NearbyPlaces = () => {
                         console.log('✅ Using current GPS location:', effectiveLocation);
                         setLocationSource('gps');
                     } else {
-                        throw new Error('No valid current location available');
+                        // If no persisted location, try to ensure we have valid location
+                        console.log('🌍 No persisted location found, ensuring valid location...');
+                        await ensureValidLocation();
+                        const updatedLoc = locationStore.getPersistedLocation();
+
+                        if (updatedLoc &&
+                            (Math.abs(updatedLoc.latitude) > 0.000001 || Math.abs(updatedLoc.longitude) > 0.000001)) {
+                            effectiveLocation = updatedLoc;
+                            console.log('✅ Using ensured GPS location:', effectiveLocation);
+                            setLocationSource('gps');
+                        } else {
+                            throw new Error('No valid current location available');
+                        }
                     }
                 } catch (gpsError) {
                     console.log('⚠️ GPS location not available, falling back to base location:', gpsError);
@@ -150,9 +162,8 @@ const NearbyPlaces = () => {
                     console.log('⚠️ No base location set, falling back to current location');
 
                     // Fallback to current location when no base location is set
+                    // Note: Location should already be initialized by LocationProvider
                     try {
-                        await ensureValidLocation();
-
                         const locationStore = useLocationStore.getState();
                         const currentLoc = locationStore.getPersistedLocation();
 
@@ -162,7 +173,19 @@ const NearbyPlaces = () => {
                             console.log('✅ Using current GPS location as fallback:', effectiveLocation);
                             setLocationSource('gps');
                         } else {
-                            throw new Error('No valid current location available');
+                            // If still no location, try to ensure we have valid location
+                            console.log('🌍 No persisted location, ensuring valid location...');
+                            await ensureValidLocation();
+                            const updatedLoc = locationStore.getPersistedLocation();
+
+                            if (updatedLoc &&
+                                (Math.abs(updatedLoc.latitude) > 0.000001 || Math.abs(updatedLoc.longitude) > 0.000001)) {
+                                effectiveLocation = updatedLoc;
+                                console.log('✅ Using ensured GPS location as fallback:', effectiveLocation);
+                                setLocationSource('gps');
+                            } else {
+                                throw new Error('No valid current location available');
+                            }
                         }
                     } catch (gpsError) {
                         console.log('⚠️ GPS also not available, using default location:', gpsError);

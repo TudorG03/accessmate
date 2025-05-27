@@ -95,12 +95,14 @@ const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose, editi
             }
 
             let result: Marker | null = null;
+            const notThere = 0;
 
             if (isEditing && editingMarker) {
                 // Update existing marker
                 result = await updateMarker(editingMarker.id, {
                     obstacleType,
                     obstacleScore,
+                    notThere,
                     description,
                     images
                 });
@@ -118,6 +120,7 @@ const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose, editi
                     console.log('📌 Creating marker with data:', {
                         obstacleType,
                         obstacleScore,
+                        notThere,
                         description: description ? description.length + ' chars' : 'none',
                         images: images.length + ' images'
                     });
@@ -126,6 +129,7 @@ const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose, editi
                     result = await createMarkerAtCurrentLocation({
                         obstacleType,
                         obstacleScore,
+                        notThere,
                         description,
                         images
                     });

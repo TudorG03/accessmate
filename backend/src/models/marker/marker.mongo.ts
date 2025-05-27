@@ -8,11 +8,12 @@ export interface IMarker {
   };
   obstacleType: string;
   obstacleScore: number;
+  notThere: number;
   description?: string;
   images?: string[];
   createdAt?: Date;
   updatedAt?: Date;
-  distance?: number; 
+  distance?: number;
 }
 
 const markerSchema = new mongoose.Schema<IMarker>({
@@ -41,6 +42,7 @@ const markerSchema = new mongoose.Schema<IMarker>({
   },
   obstacleType: { type: String, required: true },
   obstacleScore: { type: Number, default: 1 },
+  notThere: { type: Number, default: 0 },
   description: { type: String },
   images: [String],
   createdAt: { type: Date, default: Date.now },

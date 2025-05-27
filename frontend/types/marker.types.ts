@@ -13,6 +13,7 @@ export type MarkerCreate = {
     location: MarkerLocation;
     obstacleType: string;
     obstacleScore?: number;
+    notThere?: number;
     description?: string;
     images?: string[];
 };
@@ -33,6 +34,7 @@ export type Marker = {
     location: MarkerLocation;
     obstacleType: string;
     obstacleScore: number;
+    notThere: number;
     description?: string;
     images?: string[];
     createdAt: string;

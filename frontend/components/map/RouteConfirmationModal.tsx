@@ -53,6 +53,13 @@ export default function RouteConfirmationModal({
         }
     }, [placeDetails, selectedTransport, originLocation, visible]);
 
+    // Disable accessible route if distance is over 6km
+    useEffect(() => {
+        if (routeInfo && routeInfo.distance > 6) {
+            setUseAccessibleRoute(false);
+        }
+    }, [routeInfo]);
+
     async function fetchPlaceDetails() {
         if (!placeId) return;
 
@@ -121,7 +128,7 @@ export default function RouteConfirmationModal({
         try {
             console.log("🚀 Route Confirmation: Calling navigationHistoryService.recordNavigationStart");
             console.log(destination);
-            
+
             navigationId = await navigationHistoryService.recordNavigationStart(
                 {
                     placeId: destination.placeId,
@@ -242,23 +249,41 @@ export default function RouteConfirmationModal({
                                 <View className={`p-4 rounded-lg mb-5 ${isDark ? 'bg-gray-800' : 'bg-gray-100'}`}>
                                     <View className="flex-row justify-between items-center mb-2">
                                         <View className="flex-row items-center">
-                                            <Ionicons name="accessibility" size={22} color="#F1B24A" />
-                                            <Text className={`ml-2 font-semibold ${isDark ? 'text-white' : 'text-gray-800'}`}>
+                                            <Ionicons
+                                                name="accessibility"
+                                                size={22}
+                                                color={routeInfo && routeInfo.distance > 6 ? (isDark ? '#6b7280' : '#9ca3af') : '#F1B24A'}
+                                            />
+                                            <Text className={`ml-2 font-semibold ${routeInfo && routeInfo.distance > 6
+                                                ? (isDark ? 'text-gray-500' : 'text-gray-400')
+                                                : (isDark ? 'text-white' : 'text-gray-800')
+                                                }`}>
                                                 Accessible Route
                                             </Text>
+                                            {routeInfo && routeInfo.distance > 6 && (
+                                                <Text className={`ml-2 text-xs px-2 py-1 rounded ${isDark ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-500'}`}>
+                                                    Not available for long distances
+                                                </Text>
+                                            )}
                                         </View>
                                         <Switch
                                             value={useAccessibleRoute}
                                             onValueChange={setUseAccessibleRoute}
-                                            trackColor={{ false: isDark ? '#4b5563' : '#d1d5db', true: '#F1B24A' }}
-                                            thumbColor={isDark ? '#e5e7eb' : '#ffffff'}
+                                            disabled={Boolean(routeInfo && routeInfo.distance > 6)}
+                                            trackColor={{
+                                                false: isDark ? '#4b5563' : '#d1d5db',
+                                                true: routeInfo && routeInfo.distance > 6 ? (isDark ? '#4b5563' : '#d1d5db') : '#F1B24A'
+                                            }}
+                                            thumbColor={routeInfo && routeInfo.distance > 6 ? (isDark ? '#6b7280' : '#9ca3af') : (isDark ? '#e5e7eb' : '#ffffff')}
                                         />
                                     </View>
 
                                     <Text className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                                        {useAccessibleRoute
-                                            ? 'Routes will be optimized to avoid obstacles and barriers using OpenStreetMap data for more accurate walkways.'
-                                            : 'Standard Google Maps route without accessibility optimizations.'}
+                                        {routeInfo && routeInfo.distance > 6
+                                            ? 'Accessible routing is only available for destinations within 6km to ensure optimal route quality and accuracy.'
+                                            : useAccessibleRoute
+                                                ? 'Routes will be optimized to avoid obstacles and barriers using OpenStreetMap data for more accurate walkways.'
+                                                : 'Standard Google Maps route without accessibility optimizations.'}
                                     </Text>
                                 </View>
                             )}

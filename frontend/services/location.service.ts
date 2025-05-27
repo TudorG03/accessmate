@@ -85,7 +85,7 @@ async function checkNearbyMarkers(location: Location.LocationObject) {
         // Get nearby markers from the service
         try {
             console.log(`📊 Fetching markers within 100m radius`);
-            const markers = await MarkerService.getMarkersNearby(
+            const markers = await MarkerService.getMarkersNearLocation(
                 {
                     latitude: location.coords.latitude,
                     longitude: location.coords.longitude,

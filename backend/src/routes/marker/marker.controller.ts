@@ -13,6 +13,7 @@ interface CreateMarkerRequest {
   location: Location;
   obstacleType: string;
   obstacleScore?: number;
+  notThere?: number;
   description?: string;
   images?: string[];
 }
@@ -21,6 +22,7 @@ interface UpdateMarkerRequest {
   location?: Location;
   obstacleType?: string;
   obstacleScore?: number;
+  notThere?: number;
   description?: string;
   images?: string[];
 }
@@ -243,6 +245,7 @@ export const createMarker = async (ctx: Context) => {
       },
       obstacleType: data.obstacleType,
       obstacleScore: data.obstacleScore || 1,
+      notThere: data.notThere || 0,
       description: data.description,
       images: data.images || [],
     });
@@ -308,6 +311,7 @@ export const updateMarker = async (ctx: RouterContext<"/:id">) => {
     // Prepare update object with all optional fields set to null by default
     const update = {
       obstacleScore: null,
+      notThere: null,
       description: null,
       images: null,
       ...data, // Override nulls with any provided values

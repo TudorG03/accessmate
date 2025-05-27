@@ -21,6 +21,7 @@ import { formatDistance } from "@/utils/distanceUtils";
 import accessibleRouteService from "@/services/accessible-route.service";
 import navigationHistoryService from "@/services/navigation-history.service";
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
+import { useLocationStore } from "@/stores/location/location.store";
 
 type LocationObjectType = Location.LocationObject;
 
@@ -443,7 +444,54 @@ export default function MapScreen() {
     (async () => {
       try {
         setIsLoading(true);
-        console.log("Requesting location permission...");
+        console.log("Map: Checking for existing location...");
+
+        // First, check if we already have a valid location in the store
+        const { getPersistedLocation, hasValidPersistedLocation } = useLocationStore.getState();
+
+        if (hasValidPersistedLocation()) {
+          const existingLocation = getPersistedLocation();
+          console.log("Map: Using existing location from store:", existingLocation);
+
+          // Create a Location object compatible with the existing code
+          const locationObject = {
+            coords: {
+              latitude: existingLocation!.latitude,
+              longitude: existingLocation!.longitude,
+              altitude: null,
+              accuracy: null,
+              heading: null,
+              speed: null,
+              altitudeAccuracy: null,
+            },
+            timestamp: Date.now(),
+          } as LocationObjectType;
+
+          setLocation(locationObject);
+
+          // Set initial region based on existing location
+          const initialRegion = {
+            latitude: existingLocation!.latitude,
+            longitude: existingLocation!.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          };
+          setCurrentRegion(initialRegion);
+
+          setIsLoading(false);
+
+          // Find markers near the user
+          await fetchNearbyMarkers(
+            existingLocation!.latitude,
+            existingLocation!.longitude,
+            3000
+          );
+
+          return; // Exit early since we have location
+        }
+
+        // If no existing location, request fresh location
+        console.log("Map: No existing location, requesting fresh location...");
 
         // Ask for permission to access location
         let { status } = await Location.requestForegroundPermissionsAsync();
@@ -650,7 +698,7 @@ export default function MapScreen() {
                         <FontAwesome6 name="stairs" size={18} color={getObstacleIcon(marker.obstacleType).color} />
                         :
                         <Ionicons
-                          name={getObstacleIcon(marker.obstacleType).name}
+                          name={getObstacleIcon(marker.obstacleType).name as any}
                           size={18}
                           color={getObstacleIcon(marker.obstacleType).color}
                         />

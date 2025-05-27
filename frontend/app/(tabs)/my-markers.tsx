@@ -220,6 +220,18 @@ export default function MyMarkersScreen() {
                                             <Text className={`mt-2 ${getSeverityColor(marker.obstacleScore)}`}>
                                                 {getSeverityText(marker.obstacleScore)} Severity
                                             </Text>
+                                            {marker.notThere > 0 && (
+                                                <View className="flex-row items-center mt-1">
+                                                    <Ionicons
+                                                        name="flag"
+                                                        size={12}
+                                                        color="#f59e0b"
+                                                    />
+                                                    <Text className={`ml-1 text-sm text-orange-500`}>
+                                                        {marker.notThere} "not there" {marker.notThere === 1 ? 'report' : 'reports'}
+                                                    </Text>
+                                                </View>
+                                            )}
                                             {marker.description ? (
                                                 <Text
                                                     key={`desc-${marker.id}`}

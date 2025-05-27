@@ -26,6 +26,7 @@ const formatMarker = (marker: any): Marker => {
         },
         obstacleType: marker.obstacleType || "",
         obstacleScore: Number(marker.obstacleScore) || 1,
+        notThere: Number(marker.notThere) || 0,
         description: marker.description || "",
         images: Array.isArray(marker.images) ? marker.images : [],
         createdAt: marker.createdAt || new Date().toISOString(),
@@ -91,6 +92,7 @@ export const MarkerService = {
             console.log("🔍 Creating marker with data:", {
                 obstacleType: markerData.obstacleType,
                 obstacleScore: markerData.obstacleScore,
+                notThere: markerData.notThere,
                 location: markerData.location,
                 hasDescription: !!markerData.description,
                 imagesCount: markerData.images ? markerData.images.length : 0,
