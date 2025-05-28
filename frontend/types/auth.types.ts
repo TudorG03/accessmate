@@ -57,4 +57,7 @@ export interface User {
   role: UserRole;
   preferences: UserPreferences;
   isActive: boolean;
+  lastLogin?: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
 }

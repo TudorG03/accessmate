@@ -8,13 +8,14 @@ import { ThemeToggle } from "../../components/ThemeToggle";
 import { UnitPreferenceSelector } from "../../components/UnitPreferenceSelector";
 import PreferencesModal from "../../components/settings/PreferencesModal";
 import TopActivityTypes from "../../components/settings/TopActivityTypes";
-import { ProfilePictureUpload } from "../../components/profile";
+import { ProfilePictureUpload, AccountInfoModal } from "../../components/profile";
 
 export default function ProfileScreen() {
   const { logout, user } = useAuth();
   const { colors, classes, isDark, styles } = useTheme();
   const [preferencesModalVisible, setPreferencesModalVisible] = useState(false);
   const [profilePictureModalVisible, setProfilePictureModalVisible] = useState(false);
+  const [accountInfoModalVisible, setAccountInfoModalVisible] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -32,7 +33,7 @@ export default function ProfileScreen() {
     {
       icon: "person-outline" as const,
       title: "Account Information",
-      onPress: () => console.log("Account Information pressed"),
+      onPress: () => setAccountInfoModalVisible(true),
     },
     {
       icon: "heart-outline" as const,
@@ -216,6 +217,12 @@ export default function ProfileScreen() {
           </View>
         </SafeAreaView>
       </Modal>
+
+      {/* Account Info Modal */}
+      <AccountInfoModal
+        visible={accountInfoModalVisible}
+        onClose={() => setAccountInfoModalVisible(false)}
+      />
     </SafeAreaView>
   );
 } 

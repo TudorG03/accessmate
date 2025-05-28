@@ -16,7 +16,7 @@ export default function UserDashboard() {
       <ScrollView style={{ flex: 1, padding: 16 }}>
         <View style={{ marginBottom: 24 }}>
           <Text style={{ fontSize: 24, fontWeight: 'bold', color: colors.text }}>
-            Welcome, {user?.displayName}!
+            Welcome, <Text style={{ color: colors.primary }}>{user?.displayName}</Text>!
           </Text>
           <Text style={{ color: colors.secondary }}>
             Find accessible routes and locations

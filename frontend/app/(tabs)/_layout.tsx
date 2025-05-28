@@ -1,9 +1,22 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { Text, View } from "react-native";
 import { useTheme } from "../../stores/theme/useTheme";
 
 export default function TabsLayout() {
   const { colors, isDark } = useTheme();
+
+  // Custom header title component for AccessMate
+  const AccessMateTitle = () => (
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <Text style={{ fontSize: 17, fontWeight: '600', color: colors.text }}>
+        Access
+      </Text>
+      <Text style={{ fontSize: 17, fontWeight: '600', color: colors.primary }}>
+        Mate
+      </Text>
+    </View>
+  );
 
   return (
     <Tabs
@@ -49,7 +62,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="home" color={color} size={size} />
           ),
-          headerTitle: "AccessMate",
+          headerTitle: () => <AccessMateTitle />,
         }}
       />
 
