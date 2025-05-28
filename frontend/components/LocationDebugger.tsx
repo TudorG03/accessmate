@@ -12,7 +12,12 @@ export const LocationDebugger: React.FC = () => {
         getPersistedLocation,
         hasValidPersistedLocation,
         setCurrentLocation,
-        clearPersistedLocation
+        clearPersistedLocation,
+        processedMarkers,
+        processedTimestamps,
+        resetProcessedMarkers,
+        clearExpiredProcessedMarkers,
+        isMarkerInCooldown
     } = useLocationStore();
 
     const { colors, isDark } = useTheme();
@@ -44,6 +49,36 @@ export const LocationDebugger: React.FC = () => {
         Alert.alert('Location Cleared', 'Persisted location has been cleared');
     };
 
+    const handleClearCooldowns = () => {
+        resetProcessedMarkers();
+        Alert.alert('Cooldowns Cleared', 'All marker cooldowns have been reset');
+    };
+
+    const handleClearExpiredCooldowns = () => {
+        clearExpiredProcessedMarkers();
+        Alert.alert('Expired Cooldowns Cleared', 'Expired marker cooldowns have been cleared');
+    };
+
+    const handleShowCooldownStatus = () => {
+        if (processedMarkers.length === 0) {
+            Alert.alert('Cooldown Status', 'No markers are currently in cooldown');
+            return;
+        }
+
+        const now = Date.now();
+        const cooldownInfo = processedMarkers.map(markerId => {
+            const timestamp = processedTimestamps[markerId];
+            const elapsed = now - timestamp;
+            const remaining = (10 * 60 * 1000) - elapsed; // 10 minutes in ms
+            const remainingMinutes = Math.max(0, Math.ceil(remaining / (60 * 1000)));
+            const isActive = isMarkerInCooldown(markerId);
+
+            return `Marker ${markerId}: ${isActive ? `${remainingMinutes}min left` : 'Expired'}`;
+        }).join('\n');
+
+        Alert.alert('Cooldown Status', cooldownInfo);
+    };
+
     const handleCheckPersistence = () => {
         const hasValid = hasValidPersistedLocation();
         const persisted = getPersistedLocation();
@@ -73,6 +108,14 @@ export const LocationDebugger: React.FC = () => {
                 <Text style={{ color: colors.text, marginBottom: 8 }}>
                     Has Valid Persisted: {hasValidPersistedLocation() ? 'Yes' : 'No'}
                 </Text>
+                <Text style={{ color: colors.text, marginBottom: 8 }}>
+                    Markers in Cooldown: {processedMarkers.length}
+                </Text>
+                {processedMarkers.length > 0 && (
+                    <Text style={{ color: colors.text, marginBottom: 8 }}>
+                        Active Cooldowns: {processedMarkers.filter(id => isMarkerInCooldown(id)).length}
+                    </Text>
+                )}
             </View>
 
             <TouchableOpacity
@@ -101,6 +144,27 @@ export const LocationDebugger: React.FC = () => {
                 onPress={handleClearLocation}
             >
                 <Text style={{ color: 'white', textAlign: 'center' }}>Clear Persisted Location</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+                style={{ backgroundColor: '#FF3B30', padding: 12, borderRadius: 6, marginBottom: 8 }}
+                onPress={handleClearCooldowns}
+            >
+                <Text style={{ color: 'white', textAlign: 'center' }}>Clear All Cooldowns</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+                style={{ backgroundColor: '#FF3B30', padding: 12, borderRadius: 6, marginBottom: 8 }}
+                onPress={handleClearExpiredCooldowns}
+            >
+                <Text style={{ color: 'white', textAlign: 'center' }}>Clear Expired Cooldowns</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+                style={{ backgroundColor: '#FF3B30', padding: 12, borderRadius: 6, marginBottom: 8 }}
+                onPress={handleShowCooldownStatus}
+            >
+                <Text style={{ color: 'white', textAlign: 'center' }}>Show Cooldown Status</Text>
             </TouchableOpacity>
         </View>
     );

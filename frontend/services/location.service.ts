@@ -7,6 +7,10 @@ import { useLocationStore } from "@/stores/location/location.store";
 import { sendObstacleValidationNotification } from "./notification.service";
 import * as Notifications from "expo-notifications";
 import { isAuthenticated } from "@/stores/auth/auth.utils";
+import {
+    addProcessedMarker,
+    isMarkerInCooldown,
+} from "@/stores/location/location.store";
 
 // Define the background task name
 export const LOCATION_TRACKING_TASK = "background-location-tracking";
@@ -14,6 +18,10 @@ export const LOCATION_TRACKING_TASK = "background-location-tracking";
 // Define the proximity threshold in meters
 const MARKER_PROXIMITY_THRESHOLD = 100;
 const LOCATION_UPDATE_INTERVAL = 2000; // 2 seconds - updated for faster location updates
+const CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes - periodic cleanup of expired markers
+
+// Store cleanup interval reference
+let cleanupInterval: NodeJS.Timeout | null = null;
 
 // Register the background task
 TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
@@ -77,7 +85,7 @@ async function checkNearbyMarkers(location: Location.LocationObject) {
             isTrackingEnabled,
             clearExpiredProcessedMarkers,
             addProcessedMarker,
-            getProcessedMarkerIds,
+            isMarkerInCooldown,
         } = useLocationStore.getState();
 
         if (!isTrackingEnabled) {
@@ -109,9 +117,6 @@ async function checkNearbyMarkers(location: Location.LocationObject) {
             }
 
             console.log(`📊 Found ${markers.length} total markers nearby`);
-
-            // Get processed marker IDs to prevent duplicate notifications
-            const processedMarkerIds = getProcessedMarkerIds();
 
             // Log marker details for debugging
             markers.forEach((marker, index) => {
@@ -145,12 +150,12 @@ async function checkNearbyMarkers(location: Location.LocationObject) {
                 if (
                     distance <= MARKER_PROXIMITY_THRESHOLD &&
                     marker.id && // Ensure marker has an ID
-                    !processedMarkerIds.includes(marker.id) // Check if not recently processed
+                    !isMarkerInCooldown(marker.id) // Check if not in cooldown
                 ) {
                     console.log(
                         `✅ Marker ${marker.id} is within threshold: ${
                             distance.toFixed(2)
-                        }m and not recently processed`,
+                        }m and not in cooldown`,
                     );
                     // Group by obstacle type
                     if (!acc[marker.obstacleType]) {
@@ -160,6 +165,26 @@ async function checkNearbyMarkers(location: Location.LocationObject) {
 
                     // Mark this marker as processed
                     addProcessedMarker(marker.id);
+                } else if (
+                    distance <= MARKER_PROXIMITY_THRESHOLD && marker.id
+                ) {
+                    // Log why marker was skipped
+                    if (isMarkerInCooldown(marker.id)) {
+                        const currentTimestamps =
+                            useLocationStore.getState().processedTimestamps;
+                        const timestamp = currentTimestamps[marker.id];
+                        const elapsed = Date.now() - timestamp;
+                        const remaining = (10 * 60 * 1000) - elapsed; // 10 minutes in ms
+                        const remainingMinutes = Math.ceil(
+                            remaining / (60 * 1000),
+                        );
+
+                        console.log(
+                            `⏳ Marker ${marker.id} is in cooldown period (${
+                                distance.toFixed(2)
+                            }m away) - ${remainingMinutes} minutes remaining`,
+                        );
+                    }
                 }
 
                 return acc;
@@ -341,6 +366,16 @@ export async function startLocationTracking(): Promise<boolean> {
             trackingOptions,
         );
 
+        // Start periodic cleanup of expired markers
+        if (cleanupInterval) {
+            clearInterval(cleanupInterval);
+        }
+        cleanupInterval = setInterval(() => {
+            const { clearExpiredProcessedMarkers } = useLocationStore
+                .getState();
+            clearExpiredProcessedMarkers();
+        }, CLEANUP_INTERVAL);
+
         console.log("Location tracking started successfully");
         const { setIsTrackingEnabled } = useLocationStore.getState();
         setIsTrackingEnabled(true);
@@ -369,6 +404,13 @@ export async function stopLocationTracking(): Promise<boolean> {
 
         const { setIsTrackingEnabled } = useLocationStore.getState();
         setIsTrackingEnabled(false);
+
+        // Stop periodic cleanup of expired markers
+        if (cleanupInterval) {
+            clearInterval(cleanupInterval);
+        }
+        cleanupInterval = null;
+
         return true;
     } catch (error) {
         console.error("Error stopping location tracking:", error);

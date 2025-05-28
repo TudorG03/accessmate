@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, Image, Alert, Modal, ScrollView, TextInput } from "react-native";
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, Image, Alert, Modal, ScrollView, TextInput, ToastAndroid, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useReview } from "@/stores/review";
 import { useTheme } from "@/stores/theme/useTheme";
@@ -442,17 +442,24 @@ export default function MyReviewsScreen() {
           // Refresh the reviews list
           loadUserReviews();
 
-          // Show success feedback and close modal
-          Alert.alert(
-            "Review Updated",
-            "Your review has been successfully updated.",
-            [{
-              text: "OK", onPress: () => {
-                setReviewModalVisible(false);
-                setEditingReview(null); // Clear the editing review
-              }
-            }]
-          );
+          const message = "Your review has been successfully updated.";
+
+          if (Platform.OS == "android") {
+            ToastAndroid.show(message, ToastAndroid.SHORT);
+          } else {
+            Alert.alert(
+              "Review Updated",
+              message,
+              [{
+                text: "OK", onPress: () => {
+                  setReviewModalVisible(false);
+                  setEditingReview(null); // Clear the editing review
+                }
+              }]
+            );
+            setReviewModalVisible(false);
+            setEditingReview(null); // Clear the editing review
+          }
         }
       } catch (error: any) {
         console.error('Error updating review:', error);

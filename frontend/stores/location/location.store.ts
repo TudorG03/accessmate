@@ -27,7 +27,7 @@ const DEFAULT_CHECK_RADIUS = 100; // meters
 
 // Default location to use when no location is available
 const DEFAULT_LOCATION: MarkerLocation = {
-    latitude: 44.461555, 
+    latitude: 44.461555,
     longitude: 26.073303,
 };
 
@@ -52,6 +52,7 @@ interface LocationState {
     clearExpiredProcessedMarkers: () => void;
     resetProcessedMarkers: () => void;
     getProcessedMarkerIds: () => string[]; // Get list of processed marker IDs
+    isMarkerInCooldown: (markerId: string) => boolean; // Check if specific marker is in cooldown
 
     // Updated actions
     getLastKnownLocation: () => MarkerLocation; // Gets current location or default
@@ -130,13 +131,35 @@ export const useLocationStore = create<LocationState>()(
                 });
             },
 
-            // Clear expired processed markers - now just resets all markers
+            // Clear expired processed markers based on 10-minute cooldown
             clearExpiredProcessedMarkers: () => {
-                // Simply reset all processed markers
-                set({
-                    processedMarkers: [],
-                    processedTimestamps: {},
-                });
+                const now = Date.now();
+                const cooldownPeriod = 10 * 60 * 1000; // 10 minutes in milliseconds
+                const currentTimestamps = { ...get().processedTimestamps };
+                const expiredMarkerIds: string[] = [];
+
+                // Find expired markers
+                Object.entries(currentTimestamps).forEach(
+                    ([markerId, timestamp]) => {
+                        if (now - timestamp >= cooldownPeriod) {
+                            expiredMarkerIds.push(markerId);
+                            delete currentTimestamps[markerId];
+                        }
+                    },
+                );
+
+                // Update state only if there are expired markers
+                if (expiredMarkerIds.length > 0) {
+                    console.log(
+                        `🕒 Clearing ${expiredMarkerIds.length} expired markers from cooldown`,
+                    );
+                    set({
+                        processedMarkers: get().processedMarkers.filter((id) =>
+                            !expiredMarkerIds.includes(id)
+                        ),
+                        processedTimestamps: currentTimestamps,
+                    });
+                }
             },
 
             // Reset all processed markers
@@ -160,8 +183,10 @@ export const useLocationStore = create<LocationState>()(
                 });
             },
 
-            // Get list of processed marker IDs
+            // Get list of processed marker IDs (automatically clears expired ones)
             getProcessedMarkerIds: () => {
+                // Clear expired markers first
+                get().clearExpiredProcessedMarkers();
                 return get().processedMarkers;
             },
 
@@ -209,6 +234,15 @@ export const useLocationStore = create<LocationState>()(
             // Clear the persisted location for testing
             clearPersistedLocation: () => {
                 set({ currentLocation: null });
+            },
+
+            // Check if specific marker is in cooldown
+            isMarkerInCooldown: (markerId: string) => {
+                const currentTimestamps = get().processedTimestamps;
+                const now = Date.now();
+                const cooldownPeriod = 10 * 60 * 1000; // 10 minutes in milliseconds
+                const timestamp = currentTimestamps[markerId];
+                return timestamp && now - timestamp < cooldownPeriod;
             },
         }),
         {

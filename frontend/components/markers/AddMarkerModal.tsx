@@ -10,7 +10,8 @@ import {
     Platform,
     Alert,
     KeyboardAvoidingView,
-    Image
+    Image,
+    ToastAndroid
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useMarker } from '@/stores/marker/hooks/useMarker';
@@ -110,7 +111,12 @@ const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose, editi
                 if (result) {
                     resetForm();
                     onClose();
-                    Alert.alert('Success', 'Obstacle marker updated successfully!');
+                    const message = 'Obstacle marker updated successfully!';
+                    if (Platform.OS === "android") {
+                        ToastAndroid.show(message, ToastAndroid.SHORT);
+                    } else {
+                        Alert.alert('Success', message);
+                    }
                 } else {
                     setLocalError('Failed to update marker. Please try again.');
                 }
@@ -141,7 +147,12 @@ const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose, editi
                         console.log('📌 Marker created successfully with ID:', result.id);
                         resetForm();
                         onClose();
-                        Alert.alert('Success', 'Obstacle marker added successfully!');
+                        const message = 'Obstacle marker added successfully!';
+                        if (Platform.OS === "android") {
+                            ToastAndroid.show(message, ToastAndroid.SHORT);
+                        } else {
+                            Alert.alert('Success',);
+                        }
                         return;
                     }
 

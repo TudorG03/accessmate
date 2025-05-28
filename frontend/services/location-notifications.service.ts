@@ -322,7 +322,7 @@ export const createDestinationNotification = (
     id: `destination-${Date.now()}`,
     title: "Destination Nearby",
     body: `You're approaching ${destinationName}`,
-    triggerRadius: 100, // 100 meters
+    triggerRadius: 20, 
     targetLocation: destinationLocation,
     categoryId: "location-based",
     data: {
