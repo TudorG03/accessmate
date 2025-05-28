@@ -6,6 +6,7 @@ import { calculateDistance } from "@/stores/marker/marker.utils";
 import { useLocationStore } from "@/stores/location/location.store";
 import { sendObstacleValidationNotification } from "./notification.service";
 import * as Notifications from "expo-notifications";
+import { isAuthenticated } from "@/stores/auth/auth.utils";
 
 // Define the background task name
 export const LOCATION_TRACKING_TASK = "background-location-tracking";
@@ -62,6 +63,14 @@ async function checkNearbyMarkers(location: Location.LocationObject) {
                 location.coords.latitude.toFixed(6)
             }, ${location.coords.longitude.toFixed(6)}`,
         );
+
+        // Check authentication before making API calls
+        if (!(await isAuthenticated())) {
+            console.log(
+                "❌ User not authenticated, skipping nearby marker check",
+            );
+            return;
+        }
 
         // Get the current tracking settings
         const {

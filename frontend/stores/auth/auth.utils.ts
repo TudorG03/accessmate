@@ -1,4 +1,5 @@
 import { useAuthStore } from "./auth.store";
+import { getAccessToken } from "./auth.token";
 
 export const getAuthHeader = () => {
   const { accessToken } = useAuthStore.getState();
@@ -13,7 +14,10 @@ export const getAuthHeader = () => {
  */
 export const isAuthenticated = async (): Promise<boolean> => {
   const { isAuthenticated, accessToken } = useAuthStore.getState();
-  return isAuthenticated && !!accessToken;
+  const currentToken = getAccessToken();
+
+  // Check both store state and actual token
+  return isAuthenticated && !!accessToken && !!currentToken;
 };
 
 /**

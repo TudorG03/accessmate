@@ -1,7 +1,7 @@
 {
   "tasks": {
     "start": "deno run --allow-net --allow-env --allow-read src/server.ts",
-    "dev": "deno run --allow-env --allow-read --allow-write --allow-net --watch src/server.ts",
+    "dev": "deno run -A src/server.ts",
     "test": "deno test --allow-env --allow-read --allow-write --allow-net",
     "test:watch": "deno test --allow-env --allow-read --allow-write --allow-net --watch",
     "test:debug": "deno test --debug --allow-net --allow-env --allow-read src/__tests__/auth.test.ts",
