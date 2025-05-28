@@ -22,11 +22,13 @@ import accessibleRouteService from "@/services/accessible-route.service";
 import navigationHistoryService from "@/services/navigation-history.service";
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import { useLocationStore } from "@/stores/location/location.store";
+import { getCurrentLocation } from "@/services/location.service";
 
 type LocationObjectType = Location.LocationObject;
 
 export default function MapScreen() {
-  const [location, setLocation] = useState<LocationObjectType | null>(null);
+  // Use global location store instead of local state
+  const { currentLocation, setCurrentLocation } = useLocationStore();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -194,7 +196,7 @@ export default function MapScreen() {
     useAccessibleRouting: boolean = true,
     navigationId: string | null = null
   ) => {
-    if (!location) {
+    if (!currentLocation) {
       console.error("Cannot start navigation: User location is not available");
       Alert.alert(
         "Location Required",
@@ -225,8 +227,8 @@ export default function MapScreen() {
 
       // Get directions from current location to destination
       const originLocation = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude
       };
 
       console.log(`Origin: ${JSON.stringify(originLocation)}, Destination: ${JSON.stringify(destination.location)}`);
@@ -444,35 +446,16 @@ export default function MapScreen() {
     (async () => {
       try {
         setIsLoading(true);
-        console.log("Map: Checking for existing location...");
+        console.log("Map: Initializing location...");
 
-        // First, check if we already have a valid location in the store
-        const { getPersistedLocation, hasValidPersistedLocation } = useLocationStore.getState();
-
-        if (hasValidPersistedLocation()) {
-          const existingLocation = getPersistedLocation();
-          console.log("Map: Using existing location from store:", existingLocation);
-
-          // Create a Location object compatible with the existing code
-          const locationObject = {
-            coords: {
-              latitude: existingLocation!.latitude,
-              longitude: existingLocation!.longitude,
-              altitude: null,
-              accuracy: null,
-              heading: null,
-              speed: null,
-              altitudeAccuracy: null,
-            },
-            timestamp: Date.now(),
-          } as LocationObjectType;
-
-          setLocation(locationObject);
+        // Check if we already have a current location in the store
+        if (currentLocation) {
+          console.log("Map: Using existing location from store:", currentLocation);
 
           // Set initial region based on existing location
           const initialRegion = {
-            latitude: existingLocation!.latitude,
-            longitude: existingLocation!.longitude,
+            latitude: currentLocation.latitude,
+            longitude: currentLocation.longitude,
             latitudeDelta: 0.01,
             longitudeDelta: 0.01,
           };
@@ -482,62 +465,49 @@ export default function MapScreen() {
 
           // Find markers near the user
           await fetchNearbyMarkers(
-            existingLocation!.latitude,
-            existingLocation!.longitude,
+            currentLocation.latitude,
+            currentLocation.longitude,
             3000
           );
 
           return; // Exit early since we have location
         }
 
-        // If no existing location, request fresh location
-        console.log("Map: No existing location, requesting fresh location...");
+        // If no current location, try to get it using the location service
+        console.log("Map: No current location, requesting fresh location...");
 
-        // Ask for permission to access location
-        let { status } = await Location.requestForegroundPermissionsAsync();
-        console.log("Location permission status:", status);
+        const locationResult = await getCurrentLocation();
+        if (locationResult) {
+          console.log("Map: Got fresh location:", locationResult);
 
-        if (status !== 'granted') {
-          setErrorMsg('Permission to access location was denied');
+          // The location service already updates the store, but we need to set region
+          const initialRegion = {
+            latitude: locationResult.coords.latitude,
+            longitude: locationResult.coords.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          };
+          setCurrentRegion(initialRegion);
+
           setIsLoading(false);
-          return;
-        }
 
-        // Get the user's current position
-        console.log("Getting current position...");
-        let currentLocation = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced
-        });
-        console.log("Current location:", currentLocation);
-
-        setLocation(currentLocation);
-
-        // Set initial region based on user's location
-        const initialRegion = {
-          latitude: currentLocation.coords.latitude,
-          longitude: currentLocation.coords.longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        };
-        setCurrentRegion(initialRegion);
-
-        setIsLoading(false);
-
-        // Find markers near the user
-        if (currentLocation) {
+          // Find markers near the user
           await fetchNearbyMarkers(
-            currentLocation.coords.latitude,
-            currentLocation.coords.longitude,
+            locationResult.coords.latitude,
+            locationResult.coords.longitude,
             3000
           );
+        } else {
+          setErrorMsg('Could not get your location. Please enable location services and try again.');
+          setIsLoading(false);
         }
       } catch (error) {
-        console.log('Error getting location:', error);
+        console.log('Error initializing location:', error);
         setErrorMsg('Could not get your location. Please try again.');
         setIsLoading(false);
       }
     })();
-  }, []);
+  }, [currentLocation, fetchNearbyMarkers]);
 
   // Function to fetch nearby markers
   const fetchNearbyMarkers = useCallback(async (
@@ -572,24 +542,38 @@ export default function MapScreen() {
     fetchNearbyMarkers(region.latitude, region.longitude, searchRadius);
   }, [fetchNearbyMarkers]);
 
-  const zoomToCurrentLocation = useCallback(() => {
-    if (location && mapRef.current) {
-      console.log("Zooming to current location:", location.coords);
+  const zoomToCurrentLocation = useCallback(async () => {
+    if (currentLocation && mapRef.current) {
+      console.log("Zooming to current location:", currentLocation);
       const region: Region = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
       };
       mapRef.current.animateToRegion(region, 1000);
+    } else {
+      // If no current location in store, try to get fresh location
+      console.log("No current location in store, attempting to get fresh location for zoom");
+      const locationResult = await getCurrentLocation();
+      if (locationResult && mapRef.current) {
+        console.log("Got fresh location for zoom:", locationResult);
+        const region: Region = {
+          latitude: locationResult.coords.latitude,
+          longitude: locationResult.coords.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        };
+        mapRef.current.animateToRegion(region, 1000);
+      }
     }
-  }, [location]);
+  }, [currentLocation]);
 
   useEffect(() => {
-    if (location) {
+    if (currentLocation) {
       zoomToCurrentLocation();
     }
-  }, [location, zoomToCurrentLocation]);
+  }, [currentLocation, zoomToCurrentLocation]);
 
   // Default region used if location is not available
   const defaultRegion: Region = {
@@ -624,15 +608,15 @@ export default function MapScreen() {
         currentRegion.longitude,
         Math.max(300, Math.round((currentRegion.latitudeDelta * 111 * 1000) / 2))
       );
-    } else if (location) {
+    } else if (currentLocation) {
       // Fallback to user location if no current region
       fetchNearbyMarkers(
-        location.coords.latitude,
-        location.coords.longitude,
+        currentLocation.latitude,
+        currentLocation.longitude,
         3000
       );
     }
-  }, [currentRegion, location, fetchNearbyMarkers]);
+  }, [currentRegion, currentLocation, fetchNearbyMarkers]);
 
   return (
     <SafeAreaView className={`flex-1 ${isDark ? 'bg-gray-900' : 'bg-white'}`}>
@@ -865,14 +849,14 @@ export default function MapScreen() {
           )}
 
           {/* Directions Panel */}
-          {location && (
+          {currentLocation && (
             <DirectionsPanel
               steps={routeSteps || []}
               visible={showDirections && isNavigating}
               onClose={() => setShowDirections(false)}
               currentLocation={{
-                latitude: location.coords.latitude,
-                longitude: location.coords.longitude
+                latitude: currentLocation.latitude,
+                longitude: currentLocation.longitude
               }}
             />
           )}
@@ -896,9 +880,9 @@ export default function MapScreen() {
             onClose={() => setRouteConfirmationModalVisible(false)}
             onConfirm={handleRouteConfirmation}
             placeId={selectedPlace?.id || null}
-            originLocation={location ? {
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude
+            originLocation={currentLocation ? {
+              latitude: currentLocation.latitude,
+              longitude: currentLocation.longitude
             } : null}
           />
 

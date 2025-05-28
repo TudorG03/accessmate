@@ -74,6 +74,7 @@ interface MarkerState {
         location: MarkerLocation,
         radius?: number,
     ) => Promise<void>;
+    getMarkerById: (markerId: string) => Promise<Marker | null>;
     createMarker: (marker: MarkerCreate) => Promise<Marker | null>;
     updateMarker: (
         markerId: string,
@@ -278,6 +279,51 @@ export const useMarkerStore = create<MarkerState>()(
                 }
             },
 
+            getMarkerById: async (markerId: string) => {
+                try {
+                    // Check if user is authenticated before making the API call
+                    if (!await isAuthenticated()) {
+                        console.log(
+                            "User not authenticated, skipping getMarkerById",
+                        );
+                        return null;
+                    }
+
+                    set({ isLoading: true, error: null });
+                    console.log("🏪 Fetching marker by ID:", markerId);
+
+                    const marker = await MarkerService.getMarkerById(markerId);
+
+                    set({ isLoading: false });
+
+                    if (marker) {
+                        console.log("🏪 Marker found:", marker);
+                        return marker;
+                    }
+
+                    console.log("🏪 No marker found with the given ID");
+                    return null;
+                } catch (error) {
+                    console.error("❌ Error in getMarkerById:", error);
+
+                    if (handleAuthError(error)) {
+                        set({ isLoading: false });
+                        return null;
+                    }
+
+                    set({
+                        isLoading: false,
+                        error: error instanceof Error
+                            ? error.message
+                            : "Failed to fetch marker",
+                    });
+                    return null;
+                } finally {
+                    // Ensure loading state is always reset
+                    set({ isLoading: false });
+                }
+            },
+
             createMarker: async (markerData: MarkerCreate) => {
                 try {
                     set({ isLoading: true, error: null });
@@ -298,6 +344,7 @@ export const useMarkerStore = create<MarkerState>()(
                         userId: await getUserId(),
                         obstacleType: markerData.obstacleType,
                         obstacleScore: markerData.obstacleScore || 1,
+                        notThere: markerData.notThere || 0,
                         location: markerData.location,
                         description: markerData.description || "",
                         images: markerData.images || [],

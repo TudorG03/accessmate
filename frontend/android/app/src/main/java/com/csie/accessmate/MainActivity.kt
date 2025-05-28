@@ -1,4 +1,4 @@
-package com.anonymous.accessmate
+package com.csie.accessmate
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

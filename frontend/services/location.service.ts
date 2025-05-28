@@ -13,7 +13,7 @@ export const LOCATION_TRACKING_TASK = "background-location-tracking";
 
 // Define the proximity threshold in meters
 const MARKER_PROXIMITY_THRESHOLD = 100;
-const LOCATION_UPDATE_INTERVAL = 3000; // 3 seconds
+const LOCATION_UPDATE_INTERVAL = 2000; // 2 seconds - updated for faster location updates
 
 // Register the background task
 TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {

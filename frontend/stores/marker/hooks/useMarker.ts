@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { useMarkerStore } from "../marker.store";
 import {
+    Marker,
     MarkerCreate,
     MarkerLocation,
     MarkerUpdate,
@@ -19,6 +20,7 @@ export const useMarker = () => {
         fetchMarkers,
         fetchUserMarkers,
         fetchNearbyMarkers,
+        getMarkerById,
         createMarker,
         updateMarker,
         deleteMarker,
@@ -50,12 +52,12 @@ export const useMarker = () => {
                 }
 
                 // Attempt to get current location with timeout handling
-                let currentLocation = null;
+                let currentLocation: Location.LocationObject | null = null;
                 try {
                     console.log("🏷️ Getting current location with timeout");
 
                     // Create a promise that rejects after 10 seconds
-                    const timeoutPromise = new Promise((_, reject) => {
+                    const timeoutPromise = new Promise<never>((_, reject) => {
                         setTimeout(
                             () =>
                                 reject(new Error("Location request timed out")),
@@ -71,7 +73,7 @@ export const useMarker = () => {
                     currentLocation = await Promise.race([
                         locationPromise,
                         timeoutPromise,
-                    ]);
+                    ]) as Location.LocationObject;
                     console.log("🏷️ Got current location:", currentLocation);
                 } catch (locationError) {
                     console.error(
@@ -204,6 +206,7 @@ export const useMarker = () => {
         fetchMarkers,
         fetchUserMarkers,
         fetchNearbyMarkers,
+        getMarkerById,
         createMarker,
         updateMarker,
         deleteMarker,

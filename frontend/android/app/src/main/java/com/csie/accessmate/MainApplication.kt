@@ -1,4 +1,4 @@
-package com.anonymous.accessmate
+package com.csie.accessmate
 
 import android.app.Application
 import android.content.res.Configuration

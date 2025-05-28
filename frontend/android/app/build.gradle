@@ -86,9 +86,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.anonymous.accessmate'
+    namespace 'com.csie.accessmate'
     defaultConfig {
-        applicationId 'com.anonymous.accessmate'
+        applicationId 'com.csie.accessmate'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

@@ -58,6 +58,45 @@ export const getMarkers = async (ctx: Context) => {
   }
 };
 
+// Get marker by ID
+export const getMarkerById = async (ctx: RouterContext<"/:id">) => {
+  try {
+    const markerId = ctx.params.id;
+
+    // Validate that the ID is a valid MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(markerId)) {
+      ctx.response.status = 400;
+      ctx.response.body = { message: "Invalid marker ID format" };
+      return;
+    }
+
+    // Find the marker by ID
+    const marker = await Marker.findById(markerId).exec();
+
+    if (!marker) {
+      ctx.response.status = 404;
+      ctx.response.body = { message: "Marker not found" };
+      return;
+    }
+
+    ctx.response.status = 200;
+    ctx.response.body = {
+      message: "Marker retrieved successfully",
+      marker: {
+        ...marker.toObject(),
+        id: marker._id,
+      },
+    };
+  } catch (error) {
+    console.error("Get marker by ID error:", error);
+    ctx.response.status = 500;
+    ctx.response.body = {
+      message: "Server error",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+};
+
 // Get nearby markers
 export const getNearbyMarkers = async (ctx: Context) => {
   try {
@@ -287,14 +326,35 @@ export const updateMarker = async (ctx: RouterContext<"/:id">) => {
       return;
     }
 
-    // Check permissions
-    if (!isAdminOrModerator(userRole) && marker.userId.toString() !== userId) {
+    // Check permissions first - allow any user to increment notThere, but require ownership/admin for other updates
+    const isOwnerOrAdmin = isAdminOrModerator(userRole) ||
+      marker.userId.toString() === userId;
+    const isOnlyNotThereUpdate = data.notThere != null &&
+      Object.keys(data).length === 1;
+
+    if (!isOnlyNotThereUpdate && !isOwnerOrAdmin) {
       ctx.response.status = 403;
       ctx.response.body = {
         message: "Unauthorized to update this marker",
         requiredRole: "admin/moderator or marker owner",
       };
       return;
+    }
+
+    // Handle notThere increment (allowed for any authenticated user)
+    if (data.notThere != null && marker.notThere < data.notThere) {
+      const updatedMarker = await Marker.findByIdAndUpdate(
+        markerId,
+        { $set: { notThere: data.notThere } },
+        { new: true }, // Return the updated document
+      ).exec();
+
+      ctx.response.status = 200;
+      ctx.response.body = {
+        message: "Marker updated successfully",
+        marker: updatedMarker?.toObject(),
+      };
+      return; // Important: return here to prevent further execution
     }
 
     // If location is provided, it must have both latitude and longitude
@@ -359,6 +419,13 @@ export const deleteMarker = async (ctx: RouterContext<"/:id">) => {
     if (!marker) {
       ctx.response.status = 404;
       ctx.response.body = { message: "Marker not found" };
+      return;
+    }
+
+    if (marker.notThere >= 5) {
+      await marker.delete();
+      ctx.response.status = 200;
+      ctx.response.body = { message: "Marker deleted successfully" };
       return;
     }
 

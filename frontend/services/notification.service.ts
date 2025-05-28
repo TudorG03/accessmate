@@ -1,6 +1,7 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { ObstacleType } from "@/types/marker.types";
+import { initializeNotificationHandlers } from "./notification-handler.service";
 
 // Define notification channels for Android
 export const OBSTACLE_NOTIFICATION_CHANNEL = "obstacle-notifications";
@@ -87,6 +88,10 @@ export async function initializeNotifications(): Promise<boolean> {
                 };
             },
         });
+
+        // Initialize notification tap handlers
+        console.log("🔔 Initializing notification tap handlers...");
+        initializeNotificationHandlers();
 
         // Create notification channel for Android
         if (Platform.OS === "android") {

@@ -3,6 +3,7 @@ import { authMiddleware } from "../../middleware/auth.middleware.ts";
 import {
   createMarker,
   deleteMarker,
+  getMarkerById,
   getMarkers,
   getNearbyMarkers,
   updateMarker,
@@ -13,6 +14,7 @@ const markerRouter = new Router();
 markerRouter
   .get("/", authMiddleware, getMarkers)
   .get("/nearby", authMiddleware, getNearbyMarkers)
+  .get("/:id", authMiddleware, getMarkerById)
   .post("/", authMiddleware, createMarker)
   .put("/:id", authMiddleware, updateMarker)
   .delete("/:id", authMiddleware, deleteMarker);
