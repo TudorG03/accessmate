@@ -201,6 +201,27 @@ export const useReviewStore = create<ReviewState>()(
 
                     const { reviews: userReviews } = await ReviewService
                         .getUserReviews(userId);
+
+                    // Debug: Log the fetched reviews data
+                    console.log("🔍 Fetched user reviews:", {
+                        count: userReviews?.length || 0,
+                        reviews: userReviews?.map((review: any) => ({
+                            id: review.id || review._id,
+                            hasImages:
+                                !!(review.images && review.images.length > 0),
+                            imageCount: review.images?.length || 0,
+                            firstImageType: review.images?.[0]
+                                ? (review.images[0].startsWith("data:")
+                                    ? "base64"
+                                    : review.images[0].startsWith("file:")
+                                    ? "file"
+                                    : review.images[0].startsWith("http")
+                                    ? "url"
+                                    : "unknown")
+                                : "none",
+                        })) || [],
+                    });
+
                     set({
                         userReviews: Array.isArray(userReviews)
                             ? userReviews

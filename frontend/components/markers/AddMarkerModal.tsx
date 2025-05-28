@@ -225,7 +225,7 @@ const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose, editi
                     }
 
                     if (typeof createError === 'object' && createError !== null) {
-                        const errorMsg = createError.message || 'Unknown error occurred';
+                        const errorMsg = (createError as { message?: string }).message || 'Unknown error occurred';
 
                         // Check if this is a location error
                         if (errorMsg.includes('location')) {
@@ -274,9 +274,16 @@ const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose, editi
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const selectedImage = result.assets[0];
-                if (selectedImage.uri) {
-                    // For simplicity, we're just storing the uri, but in a real app you'd upload this
-                    // and store the returned URL
+                console.log(`📸 Marker image - base64 available: ${!!selectedImage.base64}, uri: ${selectedImage.uri}`);
+
+                if (selectedImage.base64) {
+                    // Create a data URL from the base64 data
+                    const dataUrl = `data:image/jpeg;base64,${selectedImage.base64}`;
+                    console.log(`📸 Created data URL (first 100 chars): ${dataUrl.substring(0, 100)}...`);
+                    setImages([...images, dataUrl]);
+                } else if (selectedImage.uri) {
+                    // Fallback to URI if base64 is not available
+                    console.log(`📸 Using fallback URI: ${selectedImage.uri}`);
                     setImages([...images, selectedImage.uri]);
                 }
             }

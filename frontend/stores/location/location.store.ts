@@ -239,10 +239,16 @@ export const useLocationStore = create<LocationState>()(
             // Check if specific marker is in cooldown
             isMarkerInCooldown: (markerId: string) => {
                 const currentTimestamps = get().processedTimestamps;
+                const timestamp = currentTimestamps[markerId];
+
+                if (!timestamp) {
+                    return false; // Not processed, so not in cooldown
+                }
+
                 const now = Date.now();
                 const cooldownPeriod = 10 * 60 * 1000; // 10 minutes in milliseconds
-                const timestamp = currentTimestamps[markerId];
-                return timestamp && now - timestamp < cooldownPeriod;
+
+                return (now - timestamp) < cooldownPeriod;
             },
         }),
         {

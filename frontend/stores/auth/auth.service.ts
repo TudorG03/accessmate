@@ -14,6 +14,7 @@ export const AuthService = {
         password: string,
         displayName: string,
         preferences?: any,
+        profilePicture?: string,
     ): Promise<AuthResponse> {
         try {
             const response = await api.post("/auth/register", {
@@ -21,6 +22,7 @@ export const AuthService = {
                 password,
                 displayName,
                 preferences,
+                profilePicture,
             });
 
             return response.data;
@@ -168,6 +170,63 @@ export const AuthService = {
                 if (error.response.status === 400) {
                     throw new Error(`Validation Error: ${errorMessage}`);
                 } else if (error.response.status === 403) {
+                    throw new Error(`Permission Error: ${errorMessage}`);
+                } else if (error.response.status === 404) {
+                    throw new Error(`Not Found: ${errorMessage}`);
+                }
+
+                throw new Error(errorMessage);
+            }
+            throw error;
+        }
+    },
+
+    /**
+     * Upload/Update profile picture for a user
+     */
+    async uploadProfilePicture(
+        userId: string,
+        profilePicture: string,
+    ): Promise<{ user: User }> {
+        try {
+            const response = await api.put(`/auth/profile-picture/${userId}`, {
+                profilePicture,
+            });
+            return response.data;
+        } catch (error) {
+            if (error.response) {
+                const errorMessage = error.response.data.message ||
+                    "Profile picture upload failed";
+
+                if (error.response.status === 400) {
+                    throw new Error(`Validation Error: ${errorMessage}`);
+                } else if (error.response.status === 403) {
+                    throw new Error(`Permission Error: ${errorMessage}`);
+                } else if (error.response.status === 404) {
+                    throw new Error(`Not Found: ${errorMessage}`);
+                }
+
+                throw new Error(errorMessage);
+            }
+            throw error;
+        }
+    },
+
+    /**
+     * Delete profile picture for a user
+     */
+    async deleteProfilePicture(userId: string): Promise<{ user: User }> {
+        try {
+            const response = await api.delete(
+                `/auth/profile-picture/${userId}`,
+            );
+            return response.data;
+        } catch (error) {
+            if (error.response) {
+                const errorMessage = error.response.data.message ||
+                    "Profile picture deletion failed";
+
+                if (error.response.status === 403) {
                     throw new Error(`Permission Error: ${errorMessage}`);
                 } else if (error.response.status === 404) {
                     throw new Error(`Not Found: ${errorMessage}`);

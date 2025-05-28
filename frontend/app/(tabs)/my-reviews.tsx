@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, Image, Alert, Modal, ScrollView, TextInput, ToastAndroid, Platform } from "react-native";
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, Alert, Modal, ScrollView, TextInput, ToastAndroid, Platform, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useReview } from "@/stores/review";
 import { useTheme } from "@/stores/theme/useTheme";
@@ -8,6 +8,7 @@ import useAuth from "@/stores/auth/hooks/useAuth";
 import { router } from "expo-router";
 import { Review } from "@/stores/review/review.store";
 import * as ImagePicker from 'expo-image-picker';
+import { ImageWithFallback } from "@/components/ImageWithFallback";
 
 export default function MyReviewsScreen() {
   const { userReviews, isLoading, error, fetchUserReviews, deleteReview } = useReview();
@@ -153,7 +154,13 @@ export default function MyReviewsScreen() {
   const renderReviewItem = ({ item }: { item: Review }) => {
     // Get the correct ID to use
     const reviewId = item.id || (item as any)._id;
-    console.log(item);
+    console.log('🔍 Rendering review item:', {
+      id: reviewId,
+      hasImages: !!(item.images && item.images.length > 0),
+      imageCount: item.images?.length || 0,
+      firstImageType: item.images?.[0] ? (item.images[0].startsWith('data:') ? 'base64' : item.images[0].startsWith('file:') ? 'file' : item.images[0].startsWith('http') ? 'url' : 'unknown') : 'none',
+      firstImageLength: item.images?.[0]?.length || 0
+    });
 
     if (!reviewId) {
       console.warn('Review without ID:', item);
@@ -207,13 +214,15 @@ export default function MyReviewsScreen() {
         {/* First image if available */}
         {item.images && item.images.length > 0 && (
           <View className="mb-3">
-            <Image
-              source={{ uri: item.images[0] }}
+            <ImageWithFallback
+              uri={item.images[0]}
               style={{ width: '100%', height: 150, borderRadius: 8 }}
               resizeMode="cover"
               onError={(error) => {
                 console.log(`🖼️ Review image load error:`, error);
                 console.log(`🖼️ Failed review image URI: ${item.images[0]}`);
+                console.log(`🖼️ Image URI type: ${item.images[0]?.startsWith('data:') ? 'base64' : item.images[0]?.startsWith('file:') ? 'file' : item.images[0]?.startsWith('http') ? 'url' : 'unknown'}`);
+                console.log(`🖼️ Image URI length: ${item.images[0]?.length || 0}`);
               }}
               onLoad={() => {
                 console.log(`🖼️ Review image loaded successfully: ${item.images[0]?.substring(0, 50)}...`);
@@ -372,7 +381,16 @@ export default function MyReviewsScreen() {
         });
         if (!result.canceled && result.assets && result.assets.length > 0) {
           const selectedImage = result.assets[0];
-          if (selectedImage.uri) {
+          console.log(`📸 Selected image - base64 available: ${!!selectedImage.base64}, uri: ${selectedImage.uri}`);
+
+          if (selectedImage.base64) {
+            // Create a data URL from the base64 data
+            const dataUrl = `data:image/jpeg;base64,${selectedImage.base64}`;
+            console.log(`📸 Created data URL (first 100 chars): ${dataUrl.substring(0, 100)}...`);
+            setReviewForm((prev) => ({ ...prev, images: [...prev.images, dataUrl] }));
+          } else if (selectedImage.uri) {
+            // Fallback to URI if base64 is not available
+            console.log(`📸 Using fallback URI: ${selectedImage.uri}`);
             setReviewForm((prev) => ({ ...prev, images: [...prev.images, selectedImage.uri] }));
           }
         }
@@ -627,7 +645,7 @@ export default function MyReviewsScreen() {
                       >
                         <Ionicons name="close-circle" size={20} color="red" />
                       </TouchableOpacity>
-                      <Image source={{ uri }} className="w-full h-full" resizeMode="cover" />
+                      <ImageWithFallback uri={uri} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                     </View>
                   ))}
                   <TouchableOpacity className={`w-[80px] h-[80px] border-2 border-dashed m-1 justify-center items-center rounded-lg ${isDark ? 'border-gray-500' : 'border-gray-300'} ${isDark ? 'bg-gray-800/50' : 'bg-white'} active:bg-primary/10`} onPress={handlePickReviewImage}>

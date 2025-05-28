@@ -53,6 +53,7 @@ export interface User {
   id: string;
   email: string;
   displayName: string;
+  profilePicture?: string; // Base64 encoded image string
   role: UserRole;
   preferences: UserPreferences;
   isActive: boolean;

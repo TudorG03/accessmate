@@ -5,7 +5,6 @@ import {
     Modal,
     TouchableOpacity,
     ScrollView,
-    Image,
     Platform,
     KeyboardAvoidingView,
     ActivityIndicator
@@ -17,6 +16,7 @@ import { getObstacleEmoji } from '@/stores/marker/marker.utils';
 import axios from 'axios';
 import { API_URL } from '@/constants/api';
 import { getAuthHeader } from '@/stores/auth/auth.utils';
+import { ImageWithFallback } from '@/components/ImageWithFallback';
 
 interface MarkerDetailsModalProps {
     visible: boolean;
@@ -163,13 +163,15 @@ const MarkerDetailsModal: React.FC<MarkerDetailsModalProps> = ({ visible, onClos
                                             key={index}
                                             className={`mr-2 rounded-lg overflow-hidden border ${isDark ? 'border-dark-border' : 'border-gray-300'}`}
                                         >
-                                            <Image
-                                                source={{ uri: imageUri }}
-                                                className="w-[150px] h-[150px]"
+                                            <ImageWithFallback
+                                                uri={imageUri}
+                                                style={{ width: 150, height: 150 }}
                                                 resizeMode="cover"
                                                 onError={(error) => {
                                                     console.log(`🖼️ Marker image load error:`, error);
                                                     console.log(`🖼️ Failed marker image URI: ${imageUri}`);
+                                                    console.log(`🖼️ Image URI type: ${imageUri?.startsWith('data:') ? 'base64' : imageUri?.startsWith('file:') ? 'file' : imageUri?.startsWith('http') ? 'url' : 'unknown'}`);
+                                                    console.log(`🖼️ Image URI length: ${imageUri?.length || 0}`);
                                                 }}
                                                 onLoad={() => {
                                                     console.log(`🖼️ Marker image loaded successfully: ${imageUri.substring(0, 50)}...`);

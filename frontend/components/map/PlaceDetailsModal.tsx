@@ -5,6 +5,7 @@ import { useTheme } from '@/stores/theme/useTheme';
 import { getPlaceDetails, getPlacePhoto } from '@/services/places.service';
 import * as ImagePicker from 'expo-image-picker';
 import { useReview } from '@/stores/review';
+import { ImageWithFallback } from '@/components/ImageWithFallback';
 
 interface PlaceDetailsModalProps {
     visible: boolean;
@@ -348,7 +349,16 @@ export default function PlaceDetailsModal({
             });
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const selectedImage = result.assets[0];
-                if (selectedImage.uri) {
+                console.log(`📸 Place review image - base64 available: ${!!selectedImage.base64}, uri: ${selectedImage.uri}`);
+
+                if (selectedImage.base64) {
+                    // Create a data URL from the base64 data
+                    const dataUrl = `data:image/jpeg;base64,${selectedImage.base64}`;
+                    console.log(`📸 Created data URL (first 100 chars): ${dataUrl.substring(0, 100)}...`);
+                    setReviewForm((prev) => ({ ...prev, images: [...prev.images, dataUrl] }));
+                } else if (selectedImage.uri) {
+                    // Fallback to URI if base64 is not available
+                    console.log(`📸 Using fallback URI: ${selectedImage.uri}`);
                     setReviewForm((prev) => ({ ...prev, images: [...prev.images, selectedImage.uri] }));
                 }
             }
@@ -722,8 +732,8 @@ export default function PlaceDetailsModal({
                                                                 shadowRadius: 2,
                                                                 elevation: 2,
                                                             }}>
-                                                                <Image
-                                                                    source={{ uri: imageUri }}
+                                                                <ImageWithFallback
+                                                                    uri={imageUri}
                                                                     style={{ width: 120, height: 90 }}
                                                                     resizeMode="cover"
                                                                 />

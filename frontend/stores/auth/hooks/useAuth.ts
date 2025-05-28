@@ -14,6 +14,8 @@ const useAuth = () => {
     logout: useAuthStore((s) => s.logout),
     updateUser: useAuthStore((s) => s.updateUser),
     updateUserPreferences: useAuthStore((s) => s.updateUserPreferences),
+    uploadProfilePicture: useAuthStore((s) => s.uploadProfilePicture),
+    deleteProfilePicture: useAuthStore((s) => s.deleteProfilePicture),
     refreshToken: useAuthStore((s) => s.refreshToken),
     clearError: useAuthStore((s) => s.clearError),
   };

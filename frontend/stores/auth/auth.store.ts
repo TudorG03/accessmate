@@ -42,12 +42,18 @@ interface AuthState {
     password: string,
     displayName: string,
     preferences?: Partial<UserPreferences>,
+    profilePicture?: string,
   ) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshToken: () => Promise<boolean>;
   updateUser: (userId: string, userData: Partial<User>) => Promise<void>;
   updateUserPreferences: (preferences: UserPreferences) => Promise<void>;
+  uploadProfilePicture: (
+    userId: string,
+    profilePicture: string,
+  ) => Promise<void>;
+  deleteProfilePicture: (userId: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -62,7 +68,13 @@ export const useAuthStore = create<AuthState>()(
         isLoading: false,
         error: null,
 
-        register: async (email, password, displayName, preferences) => {
+        register: async (
+          email,
+          password,
+          displayName,
+          preferences,
+          profilePicture,
+        ) => {
           set({ isLoading: true, error: null });
           try {
             const data = await AuthService.register(
@@ -70,6 +82,7 @@ export const useAuthStore = create<AuthState>()(
               password,
               displayName,
               preferences,
+              profilePicture,
             );
 
             setAccessToken(data.accessToken);
@@ -236,6 +249,43 @@ export const useAuthStore = create<AuthState>()(
                 : "Preferences update failed",
             });
             console.error("Update preferences error:", error);
+          } finally {
+            set({ isLoading: false });
+          }
+        },
+
+        uploadProfilePicture: async (userId, profilePicture) => {
+          set({ isLoading: true, error: null });
+          try {
+            const data = await AuthService.uploadProfilePicture(
+              userId,
+              profilePicture,
+            );
+            set({ user: data.user });
+          } catch (error) {
+            set({
+              error: error instanceof Error
+                ? error.message
+                : "Profile picture upload failed",
+            });
+            console.error("Upload profile picture error:", error);
+          } finally {
+            set({ isLoading: false });
+          }
+        },
+
+        deleteProfilePicture: async (userId) => {
+          set({ isLoading: true, error: null });
+          try {
+            const data = await AuthService.deleteProfilePicture(userId);
+            set({ user: data.user });
+          } catch (error) {
+            set({
+              error: error instanceof Error
+                ? error.message
+                : "Profile picture deletion failed",
+            });
+            console.error("Delete profile picture error:", error);
           } finally {
             set({ isLoading: false });
           }
