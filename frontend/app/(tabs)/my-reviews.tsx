@@ -462,21 +462,18 @@ export default function MyReviewsScreen() {
 
           const message = "Your review has been successfully updated.";
 
+          // Close modal and clear editing state for both platforms
+          setReviewModalVisible(false);
+          setEditingReview(null);
+
           if (Platform.OS == "android") {
             ToastAndroid.show(message, ToastAndroid.SHORT);
           } else {
             Alert.alert(
               "Review Updated",
               message,
-              [{
-                text: "OK", onPress: () => {
-                  setReviewModalVisible(false);
-                  setEditingReview(null); // Clear the editing review
-                }
-              }]
+              [{ text: "OK" }]
             );
-            setReviewModalVisible(false);
-            setEditingReview(null); // Clear the editing review
           }
         }
       } catch (error: any) {
