@@ -14,6 +14,7 @@ import {
 } from "./notification.service";
 import { useLocationStore } from "@/stores/location/location.store";
 import { useAuthStore } from "@/stores/auth/auth.store";
+import { registerCleanupFunction } from "./cleanup.service";
 
 // Singleton tracking manager
 class TrackingManager {
@@ -72,6 +73,9 @@ class TrackingManager {
                 await this.startTracking();
             }
 
+            // Register cleanup function
+            registerCleanupFunction(() => this.cleanup());
+            
             this.isInitialized = true;
             console.log("Tracking manager initialized successfully");
             return true;
@@ -100,8 +104,8 @@ class TrackingManager {
 
         // Subscribe to authentication state changes
         this.authStateUnsubscribe = useAuthStore.subscribe(
-            (state) => state.isAuthenticated,
-            async (isAuthenticated) => {
+            async (state) => {
+                const isAuthenticated = state.isAuthenticated;
                 console.log(
                     `Auth state changed: ${
                         isAuthenticated ? "Logged in" : "Logged out"

@@ -1,10 +1,6 @@
 import * as Notifications from "expo-notifications";
 import { Alert } from "react-native";
 import { MarkerService } from "@/stores/marker/marker.service";
-import {
-    addNotificationResponseListener,
-    removeNotificationListener,
-} from "./notification.service";
 
 // Store the subscription reference
 let notificationSubscription: Notifications.Subscription | null = null;
@@ -23,35 +19,12 @@ export function setObstacleValidationModal(
     console.log("✅ Obstacle validation modal function registered");
 }
 
-/**
- * Initialize notification handlers
- */
-export function initializeNotificationHandlers(): void {
-    // Clean up any existing handlers first
-    cleanupNotificationHandlers();
 
-    // Add a listener for notification taps
-    notificationSubscription = addNotificationResponseListener(
-        handleNotificationTap,
-    );
-    console.log("✅ Notification response handler initialized");
-}
-
-/**
- * Clean up notification handlers
- */
-export function cleanupNotificationHandlers(): void {
-    if (notificationSubscription) {
-        removeNotificationListener(notificationSubscription);
-        notificationSubscription = null;
-        console.log("🧹 Notification response handler cleaned up");
-    }
-}
 
 /**
  * Handle notification tap events
  */
-async function handleNotificationTap(
+export async function handleNotificationTap(
     response: Notifications.NotificationResponse,
 ): Promise<void> {
     try {
@@ -370,7 +343,6 @@ function logValidationResponse(
 }
 
 export default {
-    initializeNotificationHandlers,
-    cleanupNotificationHandlers,
     setObstacleValidationModal,
+    handleNotificationTap,
 };

@@ -7,6 +7,7 @@ import routerRouting from "./routes/routing/routing.router.ts";
 import routerReview from "./routes/review/review.router.ts";
 import routerNavigationHistory from "./routes/history/navigation-history.router.ts";
 import routerType from "./routes/type/type.router.ts";
+import routerRecommendation from "./routes/recommendation/recommendation.router.ts";
 
 const app = new Application();
 
@@ -38,7 +39,8 @@ mainRouter
   .use("/api/routing", routerRouting.routes())
   .use("/api/reviews", routerReview.routes())
   .use("/api/navigation-history", routerNavigationHistory.routes())
-  .use("/api/type", routerType.routes());
+  .use("/api/type", routerType.routes())
+  .use("/api/recommendations", routerRecommendation.routes());
 
 // Apply routers
 app.use(mainRouter.routes());

@@ -1,6 +1,7 @@
 import * as Notifications from "expo-notifications";
 import { useLocationStore } from "@/stores/location/location.store";
 import { MarkerLocation } from "@/types/marker.types";
+import { registerCleanupFunction } from "./cleanup.service";
 
 // Types for location-based notifications
 export interface LocationNotificationConfig {
@@ -21,9 +22,11 @@ export interface ActiveLocationTrigger {
 
 // Service class for managing location-based notifications
 class LocationNotificationService {
+    private static instance: LocationNotificationService;
     private activeTriggers: Map<string, ActiveLocationTrigger> = new Map();
     private currentLocation: MarkerLocation | null = null;
     private isMonitoring: boolean = false;
+    private locationUnsubscribe: (() => void) | null = null;
 
     /**
      * Initialize the location notification service
@@ -38,6 +41,9 @@ class LocationNotificationService {
             // Start monitoring location changes
             this.startLocationMonitoring();
 
+            // Register cleanup function
+            registerCleanupFunction(() => this.cleanup());
+            
             console.log(
                 "✅ LocationNotificationService: Initialized successfully",
             );
@@ -122,17 +128,40 @@ class LocationNotificationService {
         this.isMonitoring = true;
 
         // Subscribe to location store changes
-        const unsubscribe = useLocationStore.subscribe(
-            (state) => state.currentLocation,
-            (newLocation) => {
+        this.locationUnsubscribe = useLocationStore.subscribe(
+            (state) => {
+                const newLocation = state.currentLocation;
                 if (newLocation) {
                     this.onLocationUpdate(newLocation);
                 }
-            },
+            }
         );
 
-        // Store unsubscribe function for cleanup if needed
-        // Note: In a real implementation, you might want to store this for cleanup
+        console.log("🔔 Location monitoring started with subscription stored");
+    }
+
+    /**
+     * Stop monitoring location changes for notifications
+     */
+    private stopLocationMonitoring(): void {
+        console.log("🔔 Stopping location monitoring for notifications...");
+        this.isMonitoring = false;
+
+        // Clean up the location subscription
+        if (this.locationUnsubscribe) {
+            this.locationUnsubscribe();
+            this.locationUnsubscribe = null;
+            console.log("🧹 Location subscription cleaned up");
+        }
+    }
+
+    /**
+     * Clean up all resources
+     */
+    public cleanup(): void {
+        console.log("🔔 Cleaning up LocationNotificationService...");
+        this.clearAllTriggers();
+        this.stopLocationMonitoring();
     }
 
     /**

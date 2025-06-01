@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../stores/theme/useTheme";
 import { formatDistance } from "@/utils/distanceUtils";
 import NearbyPlaces from "../../components/home/NearbyPlaces";
+import { router } from "expo-router";
 
 export default function UserDashboard() {
   const { user } = useAuth();
@@ -56,6 +57,19 @@ export default function UserDashboard() {
                 </View>
                 <Text style={{ fontWeight: '500', color: colors.text }}>Saved</Text>
                 <Text style={{ fontSize: 12, color: colors.secondary }}>View saved locations</Text>
+              </View>
+            </Pressable>
+
+            <Pressable 
+              style={{ width: '50%', padding: 8 }}
+              onPress={() => router.push('/recommendations')}
+            >
+              <View style={{ backgroundColor: colors.card, padding: 16, borderRadius: 12, shadowOpacity: 0.1, shadowRadius: 4, borderWidth: 1, borderColor: colors.border }}>
+                <View style={{ backgroundColor: isDark ? '#7c2d12' : '#fee2e2', width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                  <Ionicons name="sparkles" size={20} color={isDark ? '#fca5a5' : '#ef4444'} />
+                </View>
+                <Text style={{ fontWeight: '500', color: colors.text }}>Recommendations</Text>
+                <Text style={{ fontSize: 12, color: colors.secondary }}>Personalized places</Text>
               </View>
             </Pressable>
 

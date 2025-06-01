@@ -1,7 +1,8 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { ObstacleType } from "@/types/marker.types";
-import { initializeNotificationHandlers } from "./notification-handler.service";
+import { initializeNotificationListeners } from "./notification-events.service";
+import { handleNotificationTap } from "./notification-handler.service";
 
 // Define notification channels for Android
 export const OBSTACLE_NOTIFICATION_CHANNEL = "obstacle-notifications";
@@ -91,7 +92,7 @@ export async function initializeNotifications(): Promise<boolean> {
 
         // Initialize notification tap handlers
         console.log("🔔 Initializing notification tap handlers...");
-        initializeNotificationHandlers();
+        initializeNotificationListeners(handleNotificationTap);
 
         // Create notification channel for Android
         if (Platform.OS === "android") {
@@ -290,22 +291,4 @@ export async function sendTestNotification(): Promise<boolean> {
     }
 }
 
-/**
- * Listen for notification responses (when user taps a notification)
- */
-export function addNotificationResponseListener(
-    listener: (response: Notifications.NotificationResponse) => void,
-): Notifications.Subscription {
-    return Notifications.addNotificationResponseReceivedListener(listener);
-}
 
-/**
- * Remove a notification listener
- */
-export function removeNotificationListener(
-    subscription: Notifications.Subscription,
-): void {
-    if (subscription) {
-        subscription.remove();
-    }
-}

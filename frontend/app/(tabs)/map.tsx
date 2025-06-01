@@ -77,6 +77,19 @@ export default function MapScreen() {
     }
   }, [params.openPlaceDetails, params.placeId]);
 
+  // Handle navigation parameters to start navigation directly
+  useEffect(() => {
+    if (params.startNavigation === "true" && params.placeId) {
+      console.log("Starting navigation for place ID:", params.placeId);
+      // Store the place ID and open the route confirmation modal
+      setSelectedPlace({ id: params.placeId as string });
+      setRouteConfirmationModalVisible(true);
+
+      // Clear the parameters to prevent the modal from reopening
+      router.setParams({ startNavigation: undefined, placeId: undefined });
+    }
+  }, [params.startNavigation, params.placeId]);
+
   // Handle closing the place details modal
   const handlePlaceDetailsModalClose = () => {
     setPlaceDetailsModalVisible(false);

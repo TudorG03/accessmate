@@ -6,11 +6,8 @@ import { calculateDistance } from "@/stores/marker/marker.utils";
 import { useLocationStore } from "@/stores/location/location.store";
 import { sendObstacleValidationNotification } from "./notification.service";
 import * as Notifications from "expo-notifications";
-import { isAuthenticated } from "@/stores/auth/auth.utils";
-import {
-    addProcessedMarker,
-    isMarkerInCooldown,
-} from "@/stores/location/location.store";
+import { isAuthenticatedSimple } from "@/stores/auth/auth.token-utils";
+// The functions are now accessed through the store directly
 
 // Define the background task name
 export const LOCATION_TRACKING_TASK = "background-location-tracking";
@@ -73,7 +70,7 @@ async function checkNearbyMarkers(location: Location.LocationObject) {
         );
 
         // Check authentication before making API calls
-        if (!(await isAuthenticated())) {
+        if (!isAuthenticatedSimple()) {
             console.log(
                 "❌ User not authenticated, skipping nearby marker check",
             );

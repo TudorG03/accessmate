@@ -14,6 +14,7 @@ import { AuthService } from "./auth.service";
 import { getAccessToken, setAccessToken } from "./auth.token";
 import api, { registerLogoutHandler } from "@/services/api.service";
 import { AuthResponse } from "./auth.types";
+import { performCoreCleanup } from "@/services/cleanup.service";
 
 const storage = new MMKV();
 
@@ -165,6 +166,9 @@ export const useAuthStore = create<AuthState>()(
           try {
             await AuthService.logout();
 
+            // Cleanup resources to prevent memory leaks
+            await performCoreCleanup();
+
             setAccessToken(null);
             set({
               isAuthenticated: false,
@@ -175,6 +179,10 @@ export const useAuthStore = create<AuthState>()(
             router.navigate("/");
           } catch (error) {
             console.error("Logout error:", error);
+            
+            // Still perform cleanup even if logout API call fails
+            await performCoreCleanup();
+            
             setAccessToken(null);
             set({
               isAuthenticated: false,
