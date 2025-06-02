@@ -8,7 +8,6 @@ import {
     Platform,
     Image,
     ScrollView,
-    Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -22,7 +21,6 @@ export default function LoginScreen() {
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const [debugMode, setDebugMode] = useState(false);
     const [localError, setLocalError] = useState<string | null>(null);
 
     const handleLogin = async () => {
@@ -58,10 +56,6 @@ export default function LoginScreen() {
         setThemeMode(isDark ? "light" : "dark");
     };
 
-    const toggleDebugMode = () => {
-        setDebugMode(!debugMode);
-    };
-
     // Tailwind dynamic colors
     const bgColor = isDark ? "bg-dark-background" : "bg-light-background";
     const textColor = isDark ? "text-white" : "text-black";
@@ -69,10 +63,8 @@ export default function LoginScreen() {
     const inputBgColor = isDark ? "bg-dark-input" : "bg-light-input";
     const borderColor = isDark ? "border-dark-border" : "border-light-border";
     const primaryColor = "text-primary";
-    const secondaryColor = isDark ? "bg-secondary" : "bg-primary";
     const errorBgColor = isDark ? "bg-red-900/10" : "bg-red-500/10";
     const errorTextColor = isDark ? "text-red-400" : "text-red-600";
-    const debugBgColor = isDark ? "bg-slate-800" : "bg-slate-100";
 
     return (
         <SafeAreaView className={`flex-1 ${bgColor}`}>
@@ -94,36 +86,17 @@ export default function LoginScreen() {
                                 resizeMode="contain"
                             />
 
-                            {/* Header controls */}
-                            <View className="flex-row">
-                                {/* Debug mode toggle (hidden press) */}
-                                <Pressable
-                                    onPress={toggleDebugMode}
-                                    onLongPress={() => Alert.alert(
-                                        "Debug Mode",
-                                        debugMode ? "Debug mode is now ON" : "Debug mode is now OFF"
-                                    )}
-                                    className="p-2 mr-2"
-                                >
-                                    <Ionicons
-                                        name={debugMode ? "bug" : "code-slash"}
-                                        size={18}
-                                        color={isDark ? (debugMode ? "#FDB813" : "#555") : (debugMode ? "#F1B24A" : "#888")}
-                                    />
-                                </Pressable>
-
-                                {/* Theme toggle button */}
-                                <Pressable
-                                    onPress={toggleTheme}
-                                    className={`p-2 rounded-full ${isDark ? 'bg-white/10' : 'bg-black/5'}`}
-                                >
-                                    <Ionicons
-                                        name={isDark ? "sunny" : "moon"}
-                                        size={22}
-                                        color={isDark ? "#FDB813" : "#6E6E6E"}
-                                    />
-                                </Pressable>
-                            </View>
+                            {/* Theme toggle button */}
+                            <Pressable
+                                onPress={toggleTheme}
+                                className={`p-2 rounded-full ${isDark ? 'bg-white/10' : 'bg-black/5'}`}
+                            >
+                                <Ionicons
+                                    name={isDark ? "sunny" : "moon"}
+                                    size={22}
+                                    color={isDark ? "#FDB813" : "#6E6E6E"}
+                                />
+                            </Pressable>
                         </View>
 
                         {/* Title section */}
@@ -174,57 +147,29 @@ export default function LoginScreen() {
                         </View>
 
                         <View className="mt-auto">
-                            {/* Enhanced Error display section */}
+                            {/* Error display section */}
                             {(localError || error) && (
-                                <View className={`mb-4 rounded-lg overflow-hidden`}>
-                                    {/* User friendly error message */}
-                                    <View className={`p-3 ${errorBgColor}`}>
-                                        <Text className={`text-center font-semibold ${errorTextColor}`}>
-                                            {(() => {
-                                                // Handle local validation errors first
-                                                if (localError) return localError;
+                                <View className={`mb-4 p-3 rounded-lg ${errorBgColor}`}>
+                                    <Text className={`text-center font-semibold ${errorTextColor}`}>
+                                        {(() => {
+                                            // Handle local validation errors first
+                                            if (localError) return localError;
 
-                                                // Process backend errors with context
-                                                if (error) {
-                                                    // Check for error prefix format like "Authentication Error: Invalid credentials"
-                                                    const errorParts = error.split(': ');
-                                                    if (errorParts.length > 1) {
-                                                        // Return the second part (the actual message)
-                                                        return errorParts[1];
-                                                    }
-                                                    // No prefix, just return as is
-                                                    return error;
+                                            // Process backend errors with context
+                                            if (error) {
+                                                // Check for error prefix format like "Authentication Error: Invalid credentials"
+                                                const errorParts = error.split(': ');
+                                                if (errorParts.length > 1) {
+                                                    // Return the second part (the actual message)
+                                                    return errorParts[1];
                                                 }
+                                                // No prefix, just return as is
+                                                return error;
+                                            }
 
-                                                return "Login failed";
-                                            })()}
-                                        </Text>
-                                    </View>
-
-                                    {/* Debug info (shown only in debug mode) */}
-                                    {debugMode && error && (
-                                        <View className={`p-3 ${debugBgColor}`}>
-                                            <Text className={`text-xs ${secondaryTextColor}`}>
-                                                <Text className="font-bold">Debug Info:</Text> {error}
-                                            </Text>
-                                            {/* Add additional context based on error type */}
-                                            {error && error.includes("Authentication Error") && (
-                                                <Text className={`text-xs mt-1 ${secondaryTextColor}`}>
-                                                    This usually means your email or password is incorrect.
-                                                </Text>
-                                            )}
-                                            {error && error.includes("Input Error") && (
-                                                <Text className={`text-xs mt-1 ${secondaryTextColor}`}>
-                                                    Check that your input meets the requirements.
-                                                </Text>
-                                            )}
-                                            {error && error.includes("Server Error") && (
-                                                <Text className={`text-xs mt-1 ${secondaryTextColor}`}>
-                                                    The server encountered an error. Try again later.
-                                                </Text>
-                                            )}
-                                        </View>
-                                    )}
+                                            return "Login failed";
+                                        })()}
+                                    </Text>
                                 </View>
                             )}
 

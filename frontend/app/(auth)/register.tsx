@@ -8,7 +8,6 @@ import {
     KeyboardAvoidingView,
     Platform,
     Image,
-    Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -25,7 +24,6 @@ export default function RegisterScreen() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
-    const [debugMode, setDebugMode] = useState(false);
     const [localError, setLocalError] = useState<string | null>(null);
 
     const handleRegister = async () => {
@@ -64,10 +62,6 @@ export default function RegisterScreen() {
         setThemeMode(isDark ? "light" : "dark");
     };
 
-    const toggleDebugMode = () => {
-        setDebugMode(!debugMode);
-    };
-
     // Tailwind dynamic colors
     const bgColor = isDark ? "bg-dark-background" : "bg-light-background";
     const textColor = isDark ? "text-white" : "text-black";
@@ -76,10 +70,8 @@ export default function RegisterScreen() {
     const borderColor = isDark ? "border-dark-border" : "border-light-border";
     const primaryColor = "text-primary";
     const secondaryColor = isDark ? "bg-secondary" : "bg-[#5C8374]";
-    const linkColor = isDark ? "text-blue-400" : "text-blue-600";
     const errorBgColor = isDark ? "bg-red-900/10" : "bg-red-500/10";
     const errorTextColor = isDark ? "text-red-400" : "text-red-600";
-    const debugBgColor = isDark ? "bg-gray-800/10" : "bg-gray-200/10";
 
     return (
         <SafeAreaView className={`flex-1 ${bgColor}`}>
@@ -115,22 +107,6 @@ export default function RegisterScreen() {
                                         name={isDark ? "sunny" : "moon"}
                                         size={22}
                                         color={isDark ? "#FDB813" : "#6E6E6E"}
-                                    />
-                                </Pressable>
-
-                                {/* Debug mode toggle */}
-                                <Pressable
-                                    onPress={toggleDebugMode}
-                                    onLongPress={() => Alert.alert(
-                                        "Debug Mode",
-                                        debugMode ? "Debug mode is now ON" : "Debug mode is now OFF"
-                                    )}
-                                    className="p-2 mr-2"
-                                >
-                                    <Ionicons
-                                        name={debugMode ? "bug" : "code-slash"}
-                                        size={18}
-                                        color={isDark ? (debugMode ? "#FDB813" : "#555") : (debugMode ? "#F1B24A" : "#888")}
                                     />
                                 </Pressable>
                             </View>
@@ -224,57 +200,29 @@ export default function RegisterScreen() {
                         </View>
 
                         <View className="mt-10">
-                            {/* Enhanced Error display section */}
+                            {/* Error display section */}
                             {(localError || error) && (
-                                <View className={`mb-4 rounded-lg overflow-hidden`}>
-                                    {/* User friendly error message */}
-                                    <View className={`p-3 ${errorBgColor}`}>
-                                        <Text className={`text-center font-semibold ${errorTextColor}`}>
-                                            {(() => {
-                                                // Handle local validation errors first
-                                                if (localError) return localError;
+                                <View className={`mb-4 p-3 rounded-lg ${errorBgColor}`}>
+                                    <Text className={`text-center font-semibold ${errorTextColor}`}>
+                                        {(() => {
+                                            // Handle local validation errors first
+                                            if (localError) return localError;
 
-                                                // Process backend errors with context
-                                                if (error) {
-                                                    // Check for error prefix format like "Validation Error: Password must be..."
-                                                    const errorParts = error.split(': ');
-                                                    if (errorParts.length > 1) {
-                                                        // Return the second part (the actual message)
-                                                        return errorParts[1];
-                                                    }
-                                                    // No prefix, just return as is
-                                                    return error;
+                                            // Process backend errors with context
+                                            if (error) {
+                                                // Check for error prefix format like "Validation Error: Password must be..."
+                                                const errorParts = error.split(': ');
+                                                if (errorParts.length > 1) {
+                                                    // Return the second part (the actual message)
+                                                    return errorParts[1];
                                                 }
+                                                // No prefix, just return as is
+                                                return error;
+                                            }
 
-                                                return "Registration failed";
-                                            })()}
-                                        </Text>
-                                    </View>
-
-                                    {/* Debug info (shown only in debug mode) */}
-                                    {debugMode && error && (
-                                        <View className={`p-3 ${debugBgColor}`}>
-                                            <Text className={`text-xs ${secondaryTextColor}`}>
-                                                <Text className="font-bold">Debug Info:</Text> {error}
-                                            </Text>
-                                            {/* Add additional context based on error type */}
-                                            {error && error.includes("Validation Error") && (
-                                                <Text className={`text-xs mt-1 ${secondaryTextColor}`}>
-                                                    Your input doesn't meet our requirements. Please check the format.
-                                                </Text>
-                                            )}
-                                            {error && error.includes("Account Error") && (
-                                                <Text className={`text-xs mt-1 ${secondaryTextColor}`}>
-                                                    There might be an issue with the account (e.g., email already exists).
-                                                </Text>
-                                            )}
-                                            {error && error.includes("Server Error") && (
-                                                <Text className={`text-xs mt-1 ${secondaryTextColor}`}>
-                                                    The server encountered an error. Try again later.
-                                                </Text>
-                                            )}
-                                        </View>
-                                    )}
+                                            return "Registration failed";
+                                        })()}
+                                    </Text>
                                 </View>
                             )}
 
