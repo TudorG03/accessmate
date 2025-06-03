@@ -142,10 +142,8 @@ class TrackingManager {
                 const { setIsTrackingEnabled } = useLocationStore.getState();
                 setIsTrackingEnabled(true);
 
-                // Send a test notification for the first tracking session
                 if (this.isFirstTrackingSession) {
                     this.isFirstTrackingSession = false;
-                    await sendTestNotification();
                 }
             }
 

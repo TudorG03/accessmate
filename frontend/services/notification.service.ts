@@ -103,9 +103,6 @@ export async function initializeNotifications(): Promise<boolean> {
         console.log("✅ Notification system initialized successfully");
         notificationsInitialized = true;
 
-        // Send a test notification to verify everything is working
-        await sendTestNotification();
-
         return true;
     } catch (error) {
         console.error("❌ Failed to initialize notification system:", error);

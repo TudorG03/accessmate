@@ -345,6 +345,14 @@ export const login = async (ctx: Context) => {
       return;
     }
 
+    // Check if user account is active
+    if (!user.isActive) {
+      console.log(`Login failed: Account is disabled for email: ${body.email}`);
+      ctx.response.status = 401;
+      ctx.response.body = { message: "Account is disabled. Please contact an administrator." };
+      return;
+    }
+
     console.log(`Login successful for email: ${body.email}`);
     const accessToken = await generateAccessToken(user);
     const refreshToken = await generateRefreshToken();
