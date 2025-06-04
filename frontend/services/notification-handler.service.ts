@@ -28,11 +28,14 @@ export async function handleNotificationTap(
     response: Notifications.NotificationResponse,
 ): Promise<void> {
     try {
-        console.log("📱 Notification tapped, processing...");
+        console.log("📱 =====================================");
+        console.log("📱 NOTIFICATION TAPPED - Processing...");
+        console.log("📱 =====================================");
 
         // Extract notification data
         const data = response.notification.request.content.data;
-        console.log("📱 Notification data:", JSON.stringify(data));
+        console.log("📱 Full notification response:", JSON.stringify(response, null, 2));
+        console.log("📱 Notification data:", JSON.stringify(data, null, 2));
 
         // Check if this is an obstacle validation notification
         if (data?.requiresValidation) {
@@ -85,6 +88,7 @@ async function promptObstacleValidation(
 
         // Check if we have the modal function available
         if (showObstacleValidationModal) {
+            console.log("✅ Using modal system for validation prompt");
             // Use the new modal system
             const validationData = {
                 obstacleType,
@@ -93,6 +97,7 @@ async function promptObstacleValidation(
                 timeAgo,
             };
 
+            console.log("📱 Calling showObstacleValidationModal with:", validationData);
             showObstacleValidationModal(
                 validationData,
                 handleValidationResponse,
@@ -102,6 +107,7 @@ async function promptObstacleValidation(
             console.warn(
                 "⚠️ Obstacle validation modal not available, falling back to alert",
             );
+            console.log("📱 Modal function registered:", !!showObstacleValidationModal);
             await showFallbackAlert(obstacleType, markerIds, timeAgo);
         }
     } catch (error) {

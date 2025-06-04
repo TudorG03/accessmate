@@ -117,6 +117,7 @@ export const getRecommendations = async (
       },
       scoreBreakdown: rec.scoreBreakdown,
       metadata: rec.metadata,
+      accessibility: rec.accessibility, // Include accessibility data from enhancement service
     }));
 
     ctx.response.status = 200;

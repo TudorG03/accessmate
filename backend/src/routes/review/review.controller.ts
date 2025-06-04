@@ -3,6 +3,7 @@ import Review, { IReview } from "../../models/review/review.mongo.ts";
 import { UserRole } from "../../models/auth/auth.mongo.ts";
 
 interface CreateReviewRequest {
+  placeId: string; // Google Places API ID
   location: {
     latitude: number;
     longitude: number;
@@ -134,6 +135,31 @@ export const getLocationReviews = async (ctx: Context) => {
   }
 };
 
+export const getPlaceReviews = async (ctx: RouterContext<"/place/:placeId">) => {
+  try {
+    const { placeId } = ctx.params;
+
+    if (!placeId) {
+      ctx.response.status = 400;
+      ctx.response.body = { message: "PlaceId is required" };
+      return;
+    }
+
+    // Find reviews for this specific place
+    const reviews = await Review.find({ placeId })
+      .populate("userId", "displayName email")
+      .sort({ createdAt: -1 });
+
+    ctx.response.status = 200;
+    ctx.response.body = {
+      message: "Place reviews retrieved successfully",
+      reviews,
+    };
+  } catch (error) {
+    handleError(ctx, error, "Get place reviews error:");
+  }
+};
+
 export const createReview = async (ctx: Context) => {
   try {
     const body = await ctx.request.body.json() as CreateReviewRequest;
@@ -141,13 +167,13 @@ export const createReview = async (ctx: Context) => {
 
     // Validate required fields
     if (
-      !body.location || !body.locationName || !body.accessibilityRating ||
+      !body.placeId || !body.location || !body.locationName || !body.accessibilityRating ||
       !body.questions
     ) {
       ctx.response.status = 400;
       ctx.response.body = {
         message:
-          "Location, locationName, accessibilityRating, and questions are required",
+          "PlaceId, location, locationName, accessibilityRating, and questions are required",
       };
       return;
     }
@@ -201,6 +227,7 @@ export const createReview = async (ctx: Context) => {
 
     const review = new Review({
       userId: authUser.userId,
+      placeId: body.placeId,
       location: body.location,
       locationName: body.locationName,
       accessibilityRating: body.accessibilityRating,

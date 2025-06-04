@@ -44,6 +44,39 @@ export interface RecommendationMetadata {
 }
 
 /**
+ * Accessibility feature status
+ */
+export type AccessibilityFeatureStatus = 'available' | 'not_available' | 'unknown';
+
+/**
+ * Accessibility confidence levels
+ */
+export type AccessibilityConfidence = 'high' | 'medium' | 'low' | 'none';
+
+/**
+ * Accessibility features data
+ */
+export interface AccessibilityFeatures {
+  ramp: AccessibilityFeatureStatus;
+  wideDoors: AccessibilityFeatureStatus;
+  elevator: AccessibilityFeatureStatus;
+  adaptedToilets: AccessibilityFeatureStatus;
+}
+
+/**
+ * Accessibility data for a recommendation
+ */
+export interface AccessibilityData {
+  hasData: boolean;
+  reviewCount: number;
+  features: AccessibilityFeatures;
+  matchesUserNeeds: string[]; // Features user needs that are available
+  confidence: AccessibilityConfidence;
+  averageRating: number;
+  lastReviewDate?: string; // ISO string
+}
+
+/**
  * Individual recommendation item
  */
 export interface Recommendation {
@@ -59,6 +92,7 @@ export interface Recommendation {
   googlePlaceData?: GooglePlaceData;
   scoreBreakdown?: RecommendationScoreBreakdown;
   metadata?: RecommendationMetadata;
+  accessibility?: AccessibilityData; // NEW: Accessibility enhancement data
 }
 
 /**

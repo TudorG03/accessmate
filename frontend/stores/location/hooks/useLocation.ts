@@ -7,7 +7,7 @@ import {
     startLocationTracking,
     stopLocationTracking,
 } from "@/services/location.service";
-import { initializeNotifications } from "@/services/notification.service";
+
 
 export function useLocation() {
     const {
@@ -81,15 +81,8 @@ export function useLocation() {
                 return false;
             }
 
-            // Initialize notifications
-            const notificationsInitialized = await initializeNotifications();
-            if (!notificationsInitialized) {
-                Alert.alert(
-                    "Notification Permission Required",
-                    "This app needs notification permission to alert you about nearby obstacles. Please grant notification permission in your device settings.",
-                    [{ text: "OK" }],
-                );
-            }
+            // Note: Notifications are now initialized by ObstacleValidationWrapper
+            // to ensure proper coordination with the modal system
 
             // Ensure we have a valid location
             await ensureValidLocation();

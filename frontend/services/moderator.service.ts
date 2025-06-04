@@ -8,6 +8,7 @@ export interface ModeratorReview {
         displayName: string;
         email: string;
     };
+    placeId: string; // Google Places API ID
     location: {
         latitude: number;
         longitude: number;

@@ -65,6 +65,7 @@ interface AccessibilityRequirements {
   hasElevator: boolean;
   hasRamp: boolean;
   hasAccessibleBathroom: boolean;
+  hasWideDoors: boolean;
 }
 
 interface PlaceType {
@@ -274,6 +275,7 @@ export const register = async (ctx: Context) => {
             hasElevator: false,
             hasRamp: false,
             hasAccessibleBathroom: false,
+            hasWideDoors: false,
           },
       },
     });

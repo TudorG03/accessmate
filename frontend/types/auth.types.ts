@@ -37,6 +37,7 @@ interface AccessibilityRequirements {
   hasElevator?: boolean;
   hasRamp?: boolean;
   hasAccessibleBathroom?: boolean;
+  hasWideDoors?: boolean;
 }
 
 export interface UserPreferences {

@@ -11,11 +11,13 @@ export const useReview = () => {
         reviews,
         userReviews,
         locationReviews,
+        placeReviews,
         isLoading,
         error,
         fetchReviews,
         fetchUserReviews,
         fetchLocationReviews,
+        fetchPlaceReviews,
         createReview,
         updateReview,
         deleteReview,
@@ -31,7 +33,7 @@ export const useReview = () => {
     const createReviewAtCurrentLocation = useCallback(
         async (
             reviewData: Omit<ReviewCreate, "location"> & {
-                placeId?: string | null;
+                placeId: string; // Required for new review model
             },
         ) => {
             try {
@@ -49,7 +51,7 @@ export const useReview = () => {
                 }
 
                 // Attempt to get current location with timeout handling
-                let currentLocation = null;
+                let currentLocation: any = null;
                 try {
                     console.log("📝 Getting current location with timeout");
 
@@ -103,10 +105,9 @@ export const useReview = () => {
                     );
                 }
 
-                // Create the review with current location
-                const { placeId, ...rest } = reviewData;
+                // Create the review with current location and placeId
                 const fullReviewData: ReviewCreate = {
-                    ...rest,
+                    ...reviewData,
                     location: {
                         latitude: currentLocation.coords.latitude,
                         longitude: currentLocation.coords.longitude,
@@ -114,8 +115,9 @@ export const useReview = () => {
                 };
 
                 console.log(
-                    "📝 Submitting review with location:",
+                    "📝 Submitting review with location and placeId:",
                     fullReviewData.location,
+                    fullReviewData.placeId,
                 );
 
                 const newReview = await createReview(fullReviewData);
@@ -169,6 +171,7 @@ export const useReview = () => {
             if (!placeDetails) return {};
 
             return {
+                placeId: placeDetails.place_id || "",
                 locationName: placeDetails.name || "",
                 location: placeDetails.geometry?.location
                     ? {
@@ -186,6 +189,7 @@ export const useReview = () => {
         reviews: Array.isArray(reviews) ? reviews : [],
         userReviews: Array.isArray(userReviews) ? userReviews : [],
         locationReviews: Array.isArray(locationReviews) ? locationReviews : [],
+        placeReviews: Array.isArray(placeReviews) ? placeReviews : [],
         lastFetchedReviews: Array.isArray(lastFetchedReviews)
             ? lastFetchedReviews
             : [],
@@ -196,6 +200,7 @@ export const useReview = () => {
         fetchReviews,
         fetchUserReviews,
         fetchLocationReviews,
+        fetchPlaceReviews,
         createReview,
         updateReview,
         deleteReview,

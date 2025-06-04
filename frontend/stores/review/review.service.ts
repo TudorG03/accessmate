@@ -103,6 +103,34 @@ export const ReviewService = {
     },
 
     /**
+     * Get reviews for a specific place using Google Places API ID
+     */
+    async getPlaceReviews(placeId: string): Promise<{ reviews: Review[] }> {
+        try {
+            const response = await api.get(`/api/reviews/place/${placeId}`);
+            return response.data;
+        } catch (error: unknown) {
+            if (axios.isAxiosError(error)) {
+                const axiosError = error as AxiosError<ApiErrorResponse>;
+                const errorMessage = axiosError.response?.data?.message ||
+                    "Failed to fetch place reviews";
+
+                if (axiosError.response?.status === 401) {
+                    throw new Error(`Authentication Error: ${errorMessage}`);
+                } else if (
+                    axiosError.response?.status &&
+                    axiosError.response.status >= 500
+                ) {
+                    throw new Error(`Server Error: ${errorMessage}`);
+                }
+
+                throw new Error(errorMessage);
+            }
+            throw error;
+        }
+    },
+
+    /**
      * Create a new review
      */
     async createReview(

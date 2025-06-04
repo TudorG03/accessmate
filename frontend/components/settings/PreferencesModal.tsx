@@ -29,6 +29,7 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
     const [hasElevator, setHasElevator] = useState<boolean>(false);
     const [hasRamp, setHasRamp] = useState<boolean>(false);
     const [hasAccessibleBathroom, setHasAccessibleBathroom] = useState<boolean>(false);
+    const [hasWideDoors, setHasWideDoors] = useState<boolean>(false);
 
     // State for place types from API
     const [placeTypes, setPlaceTypes] = useState<PlaceType[]>([]);
@@ -72,6 +73,7 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
                 setHasElevator(user.preferences.accessibilityRequirements.hasElevator || false);
                 setHasRamp(user.preferences.accessibilityRequirements.hasRamp || false);
                 setHasAccessibleBathroom(user.preferences.accessibilityRequirements.hasAccessibleBathroom || false);
+                setHasWideDoors(user.preferences.accessibilityRequirements.hasWideDoors || false);
             }
         }
     }, [user, visible]);
@@ -100,7 +102,8 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
                     wheelchairAccessible,
                     hasElevator,
                     hasRamp,
-                    hasAccessibleBathroom
+                    hasAccessibleBathroom,
+                    hasWideDoors
                 }
             };
 
@@ -355,13 +358,23 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
                                 />
                             </View>
 
-                            <View key="accessible-bathroom" className="flex-row justify-between items-center">
+                            <View key="accessible-bathroom" className="flex-row justify-between items-center mb-3">
                                 <Text style={styles.text}>Accessible Bathroom</Text>
                                 <Switch
                                     trackColor={{ false: colors.border, true: colors.primary }}
                                     thumbColor="white"
                                     onValueChange={setHasAccessibleBathroom}
                                     value={hasAccessibleBathroom}
+                                />
+                            </View>
+
+                            <View key="has-wide-doors" className="flex-row justify-between items-center">
+                                <Text style={styles.text}>Wide Doors</Text>
+                                <Switch
+                                    trackColor={{ false: colors.border, true: colors.primary }}
+                                    thumbColor="white"
+                                    onValueChange={setHasWideDoors}
+                                    value={hasWideDoors}
                                 />
                             </View>
                         </View>

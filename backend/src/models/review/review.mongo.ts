@@ -2,6 +2,7 @@ import mongoose, { Document, Schema } from "mongoose";
 
 export interface IReview extends Document {
   userId: mongoose.Types.ObjectId;
+  placeId: string; // Google Places API ID
   location: {
     latitude: number;
     longitude: number;
@@ -23,6 +24,7 @@ export interface IReview extends Document {
 
 const reviewSchema: Schema = new Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  placeId: { type: String, required: true, index: true }, // Google Places API ID
   location: {
     latitude: { type: Number, required: true },
     longitude: { type: Number, required: true },
@@ -40,6 +42,18 @@ const reviewSchema: Schema = new Schema({
   },
 }, {
   timestamps: true,
+});
+
+// Add compound index for userId and time queries
+reviewSchema.index({ 
+  userId: 1, 
+  createdAt: -1 
+});
+
+// Add compound index for placeId and time queries (most important for accessibility enhancement)
+reviewSchema.index({ 
+  placeId: 1,
+  createdAt: -1 
 });
 
 export default mongoose.model<IReview>("Review", reviewSchema);

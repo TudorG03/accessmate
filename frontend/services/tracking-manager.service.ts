@@ -8,7 +8,6 @@ import {
     stopLocationTracking,
 } from "./location.service";
 import {
-    initializeNotifications,
     requestNotificationPermissions,
     sendTestNotification,
 } from "./notification.service";
@@ -48,8 +47,8 @@ class TrackingManager {
         try {
             console.log("Initializing tracking manager...");
 
-            // Initialize notifications first
-            await initializeNotifications();
+            // Note: Notifications are now initialized by ObstacleValidationWrapper
+            // to ensure proper setup with the modal system
 
             // Request location permissions
             const permissionGranted = await requestLocationPermissions();

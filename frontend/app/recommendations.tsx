@@ -20,6 +20,8 @@ import {
   RecommendationResponse,
   RecommendationLoadingState,
 } from "../types/recommendation.types";
+import AccessibilityBadge from "../components/accessibility/AccessibilityBadge";
+import AccessibilityFilter, { AccessibilityFilterState } from "../components/accessibility/AccessibilityFilter";
 
 export default function RecommendationsPage() {
   const { colors, styles, isDark } = useTheme();
@@ -28,6 +30,12 @@ export default function RecommendationsPage() {
 
   // State management
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [filteredRecommendations, setFilteredRecommendations] = useState<Recommendation[]>([]);
+  const [accessibilityFilter, setAccessibilityFilter] = useState<AccessibilityFilterState>({
+    accessibleOnly: false,
+    sortByAccessibility: false,
+    showHighConfidenceOnly: false,
+  });
   const [loadingState, setLoadingState] = useState<RecommendationLoadingState>({
     loading: true,
     refreshing: false,
@@ -43,6 +51,65 @@ export default function RecommendationsPage() {
   useEffect(() => {
     loadRecommendations();
   }, []);
+
+  // Helper function to check if user has accessibility preferences
+  const hasAccessibilityPreferences = () => {
+    const prefs = user?.preferences?.accessibilityRequirements;
+    return !!(prefs && (
+      prefs.wheelchairAccessible ||
+      prefs.hasElevator ||
+      prefs.hasRamp ||
+      prefs.hasAccessibleBathroom ||
+      prefs.hasWideDoors
+    ));
+  };
+
+  // Filter and sort recommendations based on accessibility filters
+  useEffect(() => {
+    let filtered = [...recommendations];
+
+    // Apply accessibility filters
+    if (accessibilityFilter.accessibleOnly) {
+      filtered = filtered.filter(rec => 
+        rec.accessibility && rec.accessibility.matchesUserNeeds.length > 0
+      );
+    }
+
+    if (accessibilityFilter.showHighConfidenceOnly) {
+      filtered = filtered.filter(rec => 
+        rec.accessibility && rec.accessibility.confidence === 'high'
+      );
+    }
+
+    // Apply sorting
+    if (accessibilityFilter.sortByAccessibility) {
+      filtered.sort((a, b) => {
+        const aMatches = a.accessibility?.matchesUserNeeds.length || 0;
+        const bMatches = b.accessibility?.matchesUserNeeds.length || 0;
+        const aConfidence = a.accessibility?.confidence || 'none';
+        const bConfidence = b.accessibility?.confidence || 'none';
+        
+        // First sort by number of matches
+        if (aMatches !== bMatches) {
+          return bMatches - aMatches;
+        }
+        
+        // Then sort by confidence level
+        const confidenceValues = { high: 3, medium: 2, low: 1, none: 0 };
+        const aConfidenceValue = confidenceValues[aConfidence];
+        const bConfidenceValue = confidenceValues[bConfidence];
+        
+        if (aConfidenceValue !== bConfidenceValue) {
+          return bConfidenceValue - aConfidenceValue;
+        }
+        
+        // Finally maintain original score order
+        return b.score - a.score;
+      });
+    }
+
+    setFilteredRecommendations(filtered);
+  }, [recommendations, accessibilityFilter]);
 
   const loadRecommendations = async (isRefresh = false) => {
     if (!user?.id) {
@@ -98,6 +165,19 @@ export default function RecommendationsPage() {
 
       if (response) {
         console.log("🎯 Recommendations loaded successfully:", response.recommendations.length);
+        
+        // Debug accessibility data
+        response.recommendations.forEach((rec, index) => {
+          console.log(`🏢 Recommendation ${index + 1}: ${rec.placeName}`);
+          console.log(`   PlaceId: ${rec.placeId}`);
+          console.log(`   Accessibility data:`, rec.accessibility);
+          if (rec.accessibility?.matchesUserNeeds && rec.accessibility.matchesUserNeeds.length > 0) {
+            console.log(`   ✅ Has ${rec.accessibility.matchesUserNeeds.length} accessibility matches:`, rec.accessibility.matchesUserNeeds);
+          } else {
+            console.log(`   ❌ No accessibility matches found`);
+          }
+        });
+        
         setRecommendations(response.recommendations);
         setMetadata(response.metadata);
       } else {
@@ -193,6 +273,17 @@ export default function RecommendationsPage() {
             <Text style={{ fontSize: 12, color: colors.secondary }}>
               {distance}
             </Text>
+            
+            {/* Accessibility Badge */}
+            {recommendation.accessibility && (
+              <View style={{ marginTop: 4 }}>
+                <AccessibilityBadge 
+                  accessibility={recommendation.accessibility}
+                  isDark={isDark}
+                  size="small"
+                />
+              </View>
+            )}
           </View>
           <View style={{
             backgroundColor: scorePercentage >= 80 
@@ -324,7 +415,19 @@ export default function RecommendationsPage() {
           </Text>
           {metadata && (
             <Text style={{ fontSize: 12, color: colors.secondary }}>
-              {recommendations.length} recommendations • {metadata.fromCache ? 'From cache' : 'Fresh results'}
+              {filteredRecommendations.length} recommendations
+              {filteredRecommendations.length !== recommendations.length && ` (${recommendations.length} total)`}
+              {hasAccessibilityPreferences() && (
+                <Text style={{ color: colors.primary }}>
+                  {" "}• Accessibility-enhanced
+                </Text>
+              )}
+              {" "}• {metadata.fromCache ? 'From cache' : 'Fresh results'}
+              {metadata.accessibilityEnhanced && (
+                <Text style={{ color: colors.primary }}>
+                  {" "}• ♿ Enhanced
+                </Text>
+              )}
             </Text>
           )}
         </View>
@@ -351,8 +454,43 @@ export default function RecommendationsPage() {
         </View>
       ) : loadingState.error ? (
         renderErrorState()
-      ) : recommendations.length === 0 ? (
-        renderEmptyState()
+      ) : filteredRecommendations.length === 0 ? (
+        recommendations.length === 0 ? renderEmptyState() : (
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 64 }}>
+            <View style={{
+              backgroundColor: isDark ? '#374151' : '#f3f4f6',
+              width: 80,
+              height: 80,
+              borderRadius: 40,
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: 16,
+            }}>
+              <Ionicons name="filter-outline" size={32} color={colors.secondary} />
+            </View>
+            <Text style={{ fontSize: 18, fontWeight: "600", color: colors.text, marginBottom: 8 }}>
+              No Matching Places
+            </Text>
+            <Text style={{ fontSize: 14, color: colors.secondary, textAlign: "center", marginBottom: 24 }}>
+              No recommendations match your current accessibility filters.{"\n"}Try adjusting your filters or refresh for new results.
+            </Text>
+            <Pressable
+              style={{
+                backgroundColor: colors.primary,
+                paddingHorizontal: 24,
+                paddingVertical: 12,
+                borderRadius: 8,
+              }}
+              onPress={() => setAccessibilityFilter({
+                accessibleOnly: false,
+                sortByAccessibility: false,
+                showHighConfidenceOnly: false,
+              })}
+            >
+              <Text style={{ color: "white", fontWeight: "600" }}>Clear Filters</Text>
+            </Pressable>
+          </View>
+        )
       ) : (
         <ScrollView
           style={{ flex: 1 }}
@@ -397,37 +535,33 @@ export default function RecommendationsPage() {
             </Text>
           </View>
 
+          {/* Accessibility Filter */}
+          {hasAccessibilityPreferences() && (
+            <View style={{ marginBottom: 16 }}>
+              <AccessibilityFilter
+                filter={accessibilityFilter}
+                onFilterChange={setAccessibilityFilter}
+                colors={colors}
+                isDark={isDark}
+                hasAccessibilityPreferences={hasAccessibilityPreferences()}
+              />
+            </View>
+          )}
+
           {/* Recommendations List */}
           <View style={{ marginBottom: 16 }}>
             <Text style={{ fontSize: 16, fontWeight: "600", color: colors.text, marginBottom: 12 }}>
               Recommended for You
+              {filteredRecommendations.length !== recommendations.length && (
+                <Text style={{ fontSize: 14, fontWeight: "400", color: colors.secondary }}>
+                  {" "}({filteredRecommendations.length} of {recommendations.length})
+                </Text>
+              )}
             </Text>
-            {recommendations.map((recommendation, index) =>
+            {filteredRecommendations.map((recommendation, index) =>
               renderRecommendationCard(recommendation, index)
             )}
           </View>
-
-          {/* Debug Info (only show in development) */}
-          {__DEV__ && metadata && (
-            <View style={{
-              backgroundColor: colors.card,
-              padding: 12,
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: colors.border,
-              marginTop: 16,
-            }}>
-              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.text, marginBottom: 4 }}>
-                Debug Info
-              </Text>
-              <Text style={{ fontSize: 10, color: colors.secondary, fontFamily: "monospace" }}>
-                Session: {sessionId.slice(-8)}{"\n"}
-                Execution: {metadata.executionTime}ms{"\n"}
-                Candidates: {metadata.totalCandidates}{"\n"}
-                Cache: {metadata.fromCache ? "HIT" : "MISS"}
-              </Text>
-            </View>
-          )}
         </ScrollView>
       )}
     </SafeAreaView>

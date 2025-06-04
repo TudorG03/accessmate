@@ -11,6 +11,7 @@ import { ReviewService } from "./review.service";
 export interface Review {
     id: string;
     userId: string;
+    placeId: string; // Google Places API ID
     location: {
         latitude: number;
         longitude: number;
@@ -31,6 +32,7 @@ export interface Review {
 
 // Define the data needed to create a review
 export interface ReviewCreate {
+    placeId: string; // Google Places API ID (required)
     location: {
         latitude: number;
         longitude: number;
@@ -113,6 +115,7 @@ interface ReviewState {
     reviews: Review[];
     userReviews: Review[];
     locationReviews: Review[];
+    placeReviews: Review[];
     isLoading: boolean;
     error: string | null;
 
@@ -123,6 +126,7 @@ interface ReviewState {
         latitude: number,
         longitude: number,
     ) => Promise<void>;
+    fetchPlaceReviews: (placeId: string) => Promise<void>;
     createReview: (review: ReviewCreate) => Promise<Review | null>;
     updateReview: (
         reviewId: string,
@@ -140,6 +144,7 @@ export const useReviewStore = create<ReviewState>()(
             reviews: [],
             userReviews: [],
             locationReviews: [],
+            placeReviews: [],
             isLoading: false,
             error: null,
 
@@ -280,6 +285,42 @@ export const useReviewStore = create<ReviewState>()(
                 }
             },
 
+            fetchPlaceReviews: async (placeId) => {
+                try {
+                    // Check if user is authenticated before making the API call
+                    if (!(await isAuthenticated())) {
+                        console.log(
+                            "User not authenticated, skipping place reviews fetch",
+                        );
+                        set({ placeReviews: [], isLoading: false });
+                        return;
+                    }
+
+                    set({ isLoading: true, error: null });
+                    const { reviews: placeReviews } = await ReviewService
+                        .getPlaceReviews(placeId);
+                    set({
+                        placeReviews: Array.isArray(placeReviews)
+                            ? placeReviews
+                            : [],
+                        isLoading: false,
+                    });
+                } catch (error) {
+                    if (handleAuthError(error)) {
+                        set({ isLoading: false });
+                        return;
+                    }
+
+                    set({
+                        isLoading: false,
+                        error: error instanceof Error
+                            ? error.message
+                            : "Failed to fetch place reviews",
+                        placeReviews: [], // Reset place reviews on error
+                    });
+                }
+            },
+
             createReview: async (review) => {
                 try {
                     // Check if user is authenticated before making the API call
@@ -345,6 +386,9 @@ export const useReviewStore = create<ReviewState>()(
                         locationReviews: state.locationReviews.map((r) =>
                             r.id === reviewId ? updatedReview : r
                         ),
+                        placeReviews: state.placeReviews.map((r) =>
+                            r.id === reviewId ? updatedReview : r
+                        ),
                         isLoading: false,
                     }));
 
@@ -388,6 +432,9 @@ export const useReviewStore = create<ReviewState>()(
                         locationReviews: state.locationReviews.filter((r) =>
                             r.id !== reviewId
                         ),
+                        placeReviews: state.placeReviews.filter((r) =>
+                            r.id !== reviewId
+                        ),
                         isLoading: false,
                     }));
 
@@ -416,6 +463,7 @@ export const useReviewStore = create<ReviewState>()(
             partialize: (state) => ({
                 reviews: state.reviews,
                 userReviews: state.userReviews,
+                placeReviews: state.placeReviews,
             }),
         },
     ),

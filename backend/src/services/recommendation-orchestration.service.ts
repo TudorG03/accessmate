@@ -1,6 +1,7 @@
 import { GooglePlacesService, GooglePlaceBasic } from "./google-places.service.ts";
 import { UserProfileService } from "./user-profile.service.ts";
 import { RecommendationEngine, RecommendationRequest, ScoredRecommendation } from "./recommendation-engine.service.ts";
+import { AccessibilityEnhancement, EnhancedRecommendation } from "./accessibility-enhancement.service.ts";
 import RecommendationCache, { IRecommendationCache } from "../models/recommendation/recommendation-cache.mongo.ts";
 import RecommendationFeedback, { IRecommendationFeedback } from "../models/recommendation/recommendation-feedback.mongo.ts";
 import { IUserProfile } from "../models/recommendation/user-profile.mongo.ts";
@@ -28,7 +29,7 @@ export interface OrchestrationRequest {
 }
 
 export interface OrchestrationResponse {
-  recommendations: ScoredRecommendation[];
+  recommendations: EnhancedRecommendation[];
   metadata: {
     fromCache: boolean;
     cacheKey?: string;
@@ -41,12 +42,20 @@ export interface OrchestrationResponse {
       topCategories: string[];
       recommendationHistory: number;
     };
+    accessibilitySummary?: {
+      totalRecommendations: number;
+      withAccessibilityData: number;
+      highConfidenceData: number;
+      averageAccessibilityRating: number;
+      mostCommonFeatures: string[];
+    };
   };
   debug?: {
     profileUpdateNeeded: boolean;
     searchParams: any;
     cacheHit: boolean;
     candidatesSources: string[];
+    accessibilityEnhanced?: boolean;
   };
 }
 
@@ -71,7 +80,6 @@ export interface FeedbackRequest {
 export class RecommendationOrchestrationService {
   private static readonly DEFAULT_SEARCH_RADIUS = 5000; // 5km
   private static readonly DEFAULT_MAX_RESULTS = 20;
-  private static readonly CACHE_FRESH_THRESHOLD_MINUTES = 15;
   private static readonly PROFILE_UPDATE_THRESHOLD_HOURS = 24;
   private static readonly MAX_CANDIDATE_PLACES = 200;
 
@@ -146,9 +154,19 @@ export class RecommendationOrchestrationService {
                 modelVersion: "1.0.0",
               },
             }));
+
+            // Enhance cached recommendations with accessibility data
+            console.log("🔍 Enhancing cached recommendations with accessibility data...");
+            const enhancedCachedRecommendations = await AccessibilityEnhancement.enhanceRecommendations(
+              convertedRecommendations,
+              request.userId
+            );
+
+            // Get accessibility summary for cached recommendations
+            const accessibilitySummary = await AccessibilityEnhancement.getAccessibilitySummary(enhancedCachedRecommendations);
             
             return {
-              recommendations: convertedRecommendations,
+              recommendations: enhancedCachedRecommendations,
               metadata: {
                 fromCache: true,
                 cacheKey,
@@ -161,12 +179,14 @@ export class RecommendationOrchestrationService {
                   topCategories: (userProfile as any).getTopCategories(3),
                   recommendationHistory: await this.getRecommendationHistory(request.userId),
                 },
+                accessibilitySummary,
               },
               debug: {
                 profileUpdateNeeded,
                 searchParams: request,
                 cacheHit: true,
                 candidatesSources: [],
+                accessibilityEnhanced: true,
               },
             };
           }
@@ -212,10 +232,20 @@ export class RecommendationOrchestrationService {
 
       const recommendationResult = await RecommendationEngine.generateRecommendations(recommendationRequest);
 
-      // Step 6: Cache the results
+      // Step 6: Enhance recommendations with accessibility data
+      console.log("🔍 Enhancing recommendations with accessibility data...");
+      const enhancedRecommendations = await AccessibilityEnhancement.enhanceRecommendations(
+        recommendationResult.recommendations,
+        request.userId
+      );
+
+      // Get accessibility summary for metadata
+      const accessibilitySummary = await AccessibilityEnhancement.getAccessibilitySummary(enhancedRecommendations);
+
+      // Step 7: Cache the enhanced results
       await this.cacheRecommendations(
         cacheKey,
-        recommendationResult.recommendations,
+        recommendationResult.recommendations, // Cache original recommendations to avoid schema changes
         candidatePlaces.length,
         request.userId,
         request.location
@@ -223,9 +253,9 @@ export class RecommendationOrchestrationService {
 
       const executionTime = Date.now() - startTime;
 
-      // Step 7: Return response
+      // Step 8: Return enhanced response
       return {
-        recommendations: recommendationResult.recommendations,
+        recommendations: enhancedRecommendations,
         metadata: {
           fromCache: false,
           cacheKey,
@@ -238,12 +268,14 @@ export class RecommendationOrchestrationService {
             topCategories: recommendationResult.metadata.userProfileStats.topCategories,
             recommendationHistory: await this.getRecommendationHistory(request.userId),
           },
+          accessibilitySummary,
         },
         debug: {
           profileUpdateNeeded,
           searchParams: request,
           cacheHit: false,
           candidatesSources: await this.identifyCandidateSources(request),
+          accessibilityEnhanced: true,
         },
       };
 

@@ -3,6 +3,9 @@ import { Alert, ToastAndroid, Platform } from 'react-native';
 import ObstacleValidationModal from './ObstacleValidationModal';
 import { useObstacleValidation } from '@/contexts/ObstacleValidationContext';
 import { setObstacleValidationModal } from '@/services/notification-handler.service';
+import { initializeNotifications, sendTestNotification } from '@/services/notification.service';
+import { initializeNotificationListeners, cleanupNotificationListeners } from '@/services/notification-events.service';
+import { handleNotificationTap } from '@/services/notification-handler.service';
 
 const ObstacleValidationWrapper: React.FC = () => {
     const {
@@ -15,8 +18,50 @@ const ObstacleValidationWrapper: React.FC = () => {
 
     // Register the modal function with the notification handler service
     useEffect(() => {
-        setObstacleValidationModal(showValidationModal);
-        console.log("🔔 Obstacle validation modal registered with notification handler");
+        const initializeNotificationSystem = async () => {
+            try {
+                console.log("🔔 ObstacleValidationWrapper: Initializing notification system...");
+                
+                // First, ensure notifications are initialized
+                const notificationsInitialized = await initializeNotifications();
+                if (!notificationsInitialized) {
+                    console.error("❌ Failed to initialize notifications");
+                    return;
+                }
+
+                // Initialize notification tap listeners with our handler
+                initializeNotificationListeners(handleNotificationTap);
+                console.log("✅ Notification tap listeners initialized");
+
+                // Register the modal function
+                setObstacleValidationModal(showValidationModal);
+                console.log("✅ Obstacle validation modal registered with notification handler");
+
+                // Add a global function for testing notifications
+                // @ts-ignore
+                global.testNotification = async () => {
+                    console.log("🧪 Testing notification system...");
+                    const sent = await sendTestNotification();
+                    if (sent) {
+                        console.log("✅ Test notification sent successfully");
+                    } else {
+                        console.error("❌ Failed to send test notification");
+                    }
+                };
+                console.log("🧪 Test function available: Call 'testNotification()' in console to test");
+                
+            } catch (error) {
+                console.error("❌ Error initializing notification system:", error);
+            }
+        };
+
+        initializeNotificationSystem();
+
+        // Cleanup function
+        return () => {
+            console.log("🧹 ObstacleValidationWrapper: Cleaning up notification listeners");
+            cleanupNotificationListeners();
+        };
     }, [showValidationModal]);
 
     // Cross-platform toast function

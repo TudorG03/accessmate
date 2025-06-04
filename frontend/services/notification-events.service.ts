@@ -10,7 +10,25 @@ export function addNotificationResponseListener(
     listener: (response: Notifications.NotificationResponse) => void,
 ): Notifications.Subscription {
     console.log("🔔 Adding notification response listener");
-    return Notifications.addNotificationResponseReceivedListener(listener);
+    
+    // Wrap the listener with additional logging
+    const wrappedListener = (response: Notifications.NotificationResponse) => {
+        console.log("🔔 ==========================================");
+        console.log("🔔 NOTIFICATION EVENT RECEIVED!");
+        console.log("🔔 ==========================================");
+        console.log("🔔 Notification ID:", response.notification.request.identifier);
+        console.log("🔔 Action identifier:", response.actionIdentifier);
+        console.log("🔔 User input:", response.userText);
+        console.log("🔔 Calling original handler...");
+        
+        try {
+            listener(response);
+        } catch (error) {
+            console.error("❌ Error in notification listener:", error);
+        }
+    };
+    
+    return Notifications.addNotificationResponseReceivedListener(wrappedListener);
 }
 
 /**
@@ -46,4 +64,13 @@ export function cleanupNotificationListeners(): void {
         notificationSubscription = null;
         console.log("🧹 Notification response handler cleaned up");
     }
+}
+
+/**
+ * Check if notification listeners are active
+ */
+export function areNotificationListenersActive(): boolean {
+    const isActive = notificationSubscription !== null;
+    console.log("🔔 Notification listeners active:", isActive);
+    return isActive;
 } 

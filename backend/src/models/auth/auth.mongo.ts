@@ -55,6 +55,7 @@ interface IUserPreferences {
     hasElevator: boolean;
     hasRamp: boolean;
     hasAccessibleBathroom: boolean;
+    hasWideDoors: boolean;
   };
 }
 
@@ -169,6 +170,7 @@ const userSchema: Schema = new Schema({
       hasElevator: { type: Boolean, default: false },
       hasRamp: { type: Boolean, default: false },
       hasAccessibleBathroom: { type: Boolean, default: false },
+      hasWideDoors: { type: Boolean, default: false },
     },
   },
   profilePicture: {

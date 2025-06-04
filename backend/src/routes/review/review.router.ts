@@ -4,6 +4,7 @@ import {
   deleteReview,
   getAllReviews,
   getLocationReviews,
+  getPlaceReviews,
   getUserReviews,
   updateReview,
 } from "./review.controller.ts";
@@ -34,6 +35,12 @@ routerReview.get(
 routerReview.get(
   "/location",
   getLocationReviews,
+);
+
+// Get reviews by place ID (public)
+routerReview.get(
+  "/place/:placeId",
+  getPlaceReviews,
 );
 
 // Create a new review (authenticated users)
