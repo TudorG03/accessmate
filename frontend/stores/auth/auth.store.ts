@@ -55,6 +55,7 @@ interface AuthState {
     profilePicture: string,
   ) => Promise<void>;
   deleteProfilePicture: (userId: string) => Promise<void>;
+  deleteUser: (userId: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -294,6 +295,34 @@ export const useAuthStore = create<AuthState>()(
                 : "Profile picture deletion failed",
             });
             console.error("Delete profile picture error:", error);
+          } finally {
+            set({ isLoading: false });
+          }
+        },
+
+        deleteUser: async (userId) => {
+          set({ isLoading: true, error: null });
+          try {
+            await AuthService.deleteUser(userId);
+            
+            // After successful deletion, perform logout cleanup
+            await performCoreCleanup();
+
+            setAccessToken(null);
+            set({
+              isAuthenticated: false,
+              accessToken: null,
+              user: null,
+            });
+
+            router.navigate("/");
+          } catch (error) {
+            set({
+              error: error instanceof Error
+                ? error.message
+                : "Account deletion failed",
+            });
+            console.error("Delete user error:", error);
           } finally {
             set({ isLoading: false });
           }

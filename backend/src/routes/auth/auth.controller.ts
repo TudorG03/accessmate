@@ -103,6 +103,10 @@ interface UpdateUserRequest {
   isActive?: boolean;
 }
 
+interface ProfilePictureRequest {
+  profilePicture: string;
+}
+
 const refreshTokenExpiryTime: number = parseInt(
   Deno.env.get("JWT_REFRESH_EXPIRES_IN") || "7",
 );
@@ -201,6 +205,7 @@ export const getAllUsers = async (ctx: Context) => {
         displayName: user.displayName,
         role: user.role,
         preferences: user.preferences,
+        profilePicture: user.profilePicture,
         isActive: user.isActive,
         lastLogin: user.lastLogin,
       })),
@@ -307,6 +312,7 @@ export const register = async (ctx: Context) => {
         displayName: user.displayName,
         role: user.role,
         preferences: user.preferences,
+        profilePicture: user.profilePicture,
       },
     };
   } catch (error) {
@@ -392,6 +398,7 @@ export const login = async (ctx: Context) => {
         displayName: user.displayName,
         role: user.role,
         preferences: user.preferences,
+        profilePicture: user.profilePicture,
         isActive: user.isActive,
       },
     };
@@ -525,6 +532,7 @@ export const updateUser = async (ctx: RouterContext<"/update/:id">) => {
         displayName: user.displayName,
         role: user.role,
         preferences: user.preferences,
+        profilePicture: user.profilePicture,
         isActive: user.isActive,
       },
     };
@@ -597,6 +605,7 @@ export const getUserById = async (ctx: RouterContext<"/user/:id">) => {
           displayName: user.displayName,
           role: user.role,
           preferences: user.preferences,
+          profilePicture: user.profilePicture,
           isActive: user.isActive,
           lastLogin: user.lastLogin,
           createdAt: user.createdAt,
@@ -612,10 +621,140 @@ export const getUserById = async (ctx: RouterContext<"/user/:id">) => {
           id: user._id,
           displayName: user.displayName,
           role: user.role,
+          profilePicture: user.profilePicture,
         },
       };
     }
   } catch (error) {
     handleError(ctx, error, "Get user by ID error:");
+  }
+};
+
+/**
+ * Upload/Update profile picture for a user
+ */
+export const uploadProfilePicture = async (ctx: RouterContext<"/profile-picture/:id">) => {
+  try {
+    const userId = ctx.params.id;
+    const body = await ctx.request.body.json() as ProfilePictureRequest;
+    const authUser = ctx.state.user;
+
+    // Only allow users to update their own profile picture unless they're admin/moderator
+    if (
+      authUser.role !== UserRole.ADMIN &&
+      authUser.role !== UserRole.MODERATOR && 
+      authUser.userId !== userId
+    ) {
+      ctx.response.status = 403;
+      ctx.response.body = { message: "Unauthorized to update this user's profile picture" };
+      return;
+    }
+
+    if (!body.profilePicture) {
+      ctx.response.status = 400;
+      ctx.response.body = { message: "Profile picture data is required" };
+      return;
+    }
+
+    // Validate that it's a base64 data URL for images
+    if (!body.profilePicture.startsWith("data:image/") || !body.profilePicture.includes("base64,")) {
+      ctx.response.status = 400;
+      ctx.response.body = { message: "Profile picture must be a valid base64 image data URL" };
+      return;
+    }
+
+    // Check file size (base64 string length should be reasonable)
+    // Base64 encoding increases size by ~33%, so 2MB image = ~2.7MB base64
+    // Let's limit to ~4MB base64 string (≈3MB original image)
+    if (body.profilePicture.length > 4 * 1024 * 1024) {
+      ctx.response.status = 400;
+      ctx.response.body = { message: "Profile picture is too large. Please use an image smaller than 3MB" };
+      return;
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      ctx.response.status = 404;
+      ctx.response.body = { message: "User not found" };
+      return;
+    }
+
+    user.profilePicture = body.profilePicture;
+    await user.save();
+
+    ctx.response.status = 200;
+    ctx.response.body = {
+      message: "Profile picture updated successfully",
+      user: {
+        id: user._id,
+        email: user.email,
+        displayName: user.displayName,
+        role: user.role,
+        preferences: user.preferences,
+        profilePicture: user.profilePicture,
+        isActive: user.isActive,
+        lastLogin: user.lastLogin,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
+    };
+  } catch (error) {
+    handleError(ctx, error, "Upload profile picture error:");
+  }
+};
+
+/**
+ * Delete profile picture for a user
+ */
+export const deleteProfilePicture = async (ctx: RouterContext<"/profile-picture/:id">) => {
+  try {
+    const userId = ctx.params.id;
+    const authUser = ctx.state.user;
+
+    // Only allow users to delete their own profile picture unless they're admin/moderator
+    if (
+      authUser.role !== UserRole.ADMIN &&
+      authUser.role !== UserRole.MODERATOR && 
+      authUser.userId !== userId
+    ) {
+      ctx.response.status = 403;
+      ctx.response.body = { message: "Unauthorized to delete this user's profile picture" };
+      return;
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      ctx.response.status = 404;
+      ctx.response.body = { message: "User not found" };
+      return;
+    }
+
+    if (!user.profilePicture) {
+      ctx.response.status = 404;
+      ctx.response.body = { message: "User does not have a profile picture" };
+      return;
+    }
+
+    user.profilePicture = undefined;
+    await user.save();
+
+    ctx.response.status = 200;
+    ctx.response.body = {
+      message: "Profile picture deleted successfully",
+      user: {
+        id: user._id,
+        email: user.email,
+        displayName: user.displayName,
+        role: user.role,
+        preferences: user.preferences,
+        profilePicture: user.profilePicture,
+        isActive: user.isActive,
+        lastLogin: user.lastLogin,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
+    };
+  } catch (error) {
+    handleError(ctx, error, "Delete profile picture error:");
   }
 };

@@ -64,6 +64,7 @@ export interface IUser extends Document {
   displayName: string;
   role: UserRole;
   preferences: IUserPreferences;
+  profilePicture?: string;
   refreshToken: string | null;
   refreshTokenExpiry: Date | null;
   isActive: boolean;
@@ -169,6 +170,10 @@ const userSchema: Schema = new Schema({
       hasRamp: { type: Boolean, default: false },
       hasAccessibleBathroom: { type: Boolean, default: false },
     },
+  },
+  profilePicture: {
+    type: String,
+    default: null,
   },
   refreshToken: {
     type: String,

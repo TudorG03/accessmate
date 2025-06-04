@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     View,
     Text,
@@ -22,6 +22,18 @@ export default function LoginScreen() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [localError, setLocalError] = useState<string | null>(null);
+
+    // Auto-clear errors after 5 seconds
+    useEffect(() => {
+        if (localError || error) {
+            const timer = setTimeout(() => {
+                setLocalError(null);
+                clearError();
+            }, 5000);
+
+            return () => clearTimeout(timer);
+        }
+    }, [localError, error, clearError]);
 
     const handleLogin = async () => {
         try {

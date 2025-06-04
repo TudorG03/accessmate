@@ -23,7 +23,7 @@ interface AccountInfoModalProps {
 }
 
 const AccountInfoModal: React.FC<AccountInfoModalProps> = ({ visible, onClose }) => {
-    const { user, updateUser, isLoading, error, clearError } = useAuth();
+    const { user, updateUser, deleteUser, isLoading, error, clearError } = useAuth();
     const { colors, styles } = useTheme();
 
     const [isEditing, setIsEditing] = useState(false);
@@ -114,6 +114,38 @@ const AccountInfoModal: React.FC<AccountInfoModalProps> = ({ visible, onClose })
             });
         }
         setIsEditing(false);
+    };
+
+    const handleDeleteAccount = () => {
+        Alert.alert(
+            'Delete Account',
+            'Are you sure you want to permanently delete your account? This action cannot be undone and will remove all your data.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                        if (!user?.id) {
+                            Alert.alert('Error', 'User not found');
+                            return;
+                        }
+
+                        try {
+                            setLocalLoading(true);
+                            await deleteUser(user.id);
+                            // The deleteUser function handles logout and navigation automatically
+                        } catch (err) {
+                            const errorMessage = err instanceof Error ? err.message : 'Failed to delete account';
+                            Alert.alert('Delete Error', errorMessage);
+                            console.error('Account deletion error:', err);
+                        } finally {
+                            setLocalLoading(false);
+                        }
+                    }
+                },
+            ]
+        );
     };
 
     const handleClose = () => {
@@ -346,15 +378,38 @@ const AccountInfoModal: React.FC<AccountInfoModalProps> = ({ visible, onClose })
                     {/* Action Buttons */}
                     <View className="p-6 border-t" style={{ borderColor: colors.border }}>
                         {!isEditing ? (
-                            <TouchableOpacity
-                                className="py-4 rounded-lg flex-row justify-center items-center"
-                                style={{ backgroundColor: colors.primary }}
-                                onPress={() => setIsEditing(true)}
-                                disabled={isProcessing}
-                            >
-                                <Ionicons name="pencil" size={16} color="white" style={{ marginRight: 8 }} />
-                                <Text className="text-white font-semibold">Edit Information</Text>
-                            </TouchableOpacity>
+                            <View>
+                                {/* Delete Account Button */}
+                                <TouchableOpacity
+                                    className="py-4 rounded-lg flex-row justify-center items-center mb-4"
+                                    style={{ 
+                                        backgroundColor: '#EF4444',
+                                        opacity: isProcessing ? 0.7 : 1
+                                    }}
+                                    onPress={handleDeleteAccount}
+                                    disabled={isProcessing}
+                                >
+                                    {isProcessing ? (
+                                        <ActivityIndicator size="small" color="white" />
+                                    ) : (
+                                        <>
+                                            <Ionicons name="trash" size={16} color="white" style={{ marginRight: 8 }} />
+                                            <Text className="text-white font-semibold">Delete Account</Text>
+                                        </>
+                                    )}
+                                </TouchableOpacity>
+
+                                {/* Edit Information Button */}
+                                <TouchableOpacity
+                                    className="py-4 rounded-lg flex-row justify-center items-center"
+                                    style={{ backgroundColor: colors.primary }}
+                                    onPress={() => setIsEditing(true)}
+                                    disabled={isProcessing}
+                                >
+                                    <Ionicons name="pencil" size={16} color="white" style={{ marginRight: 8 }} />
+                                    <Text className="text-white font-semibold">Edit Information</Text>
+                                </TouchableOpacity>
+                            </View>
                         ) : (
                             <View className="flex-row space-x-3">
                                 <TouchableOpacity

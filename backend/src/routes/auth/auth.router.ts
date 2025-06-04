@@ -8,6 +8,8 @@ import {
   refreshToken,
   register,
   updateUser,
+  uploadProfilePicture,
+  deleteProfilePicture,
 } from "./auth.controller.ts";
 import {
   authMiddleware,
@@ -76,6 +78,51 @@ routerAuth.delete(
     }
   },
   deleteUser,
+);
+
+// Profile picture routes
+routerAuth.put(
+  "/profile-picture/:id",
+  authMiddleware,
+  async (ctx, next) => {
+    const authUser = ctx.state.user;
+    const userId = ctx.params.id;
+
+    // Allow access if user is admin/moderator or updating their own profile
+    if (
+      authUser.role === UserRole.ADMIN ||
+      authUser.role === UserRole.MODERATOR ||
+      authUser.userId === userId
+    ) {
+      await next();
+    } else {
+      ctx.response.status = 403;
+      ctx.response.body = { message: "Unauthorized to update this user's profile picture" };
+    }
+  },
+  uploadProfilePicture,
+);
+
+routerAuth.delete(
+  "/profile-picture/:id",
+  authMiddleware,
+  async (ctx, next) => {
+    const authUser = ctx.state.user;
+    const userId = ctx.params.id;
+
+    // Allow access if user is admin/moderator or deleting their own profile picture
+    if (
+      authUser.role === UserRole.ADMIN ||
+      authUser.role === UserRole.MODERATOR ||
+      authUser.userId === userId
+    ) {
+      await next();
+    } else {
+      ctx.response.status = 403;
+      ctx.response.body = { message: "Unauthorized to delete this user's profile picture" };
+    }
+  },
+  deleteProfilePicture,
 );
 
 // Logout route (requires authentication)

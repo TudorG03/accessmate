@@ -237,6 +237,30 @@ export const AuthService = {
             throw error;
         }
     },
+
+    /**
+     * Delete user account
+     */
+    async deleteUser(userId: string): Promise<{ message: string }> {
+        try {
+            const response = await api.delete(`/auth/delete/${userId}`);
+            return response.data;
+        } catch (error: any) {
+            if (error.response) {
+                const errorMessage = error.response.data.message ||
+                    "Account deletion failed";
+
+                if (error.response.status === 403) {
+                    throw new Error(`Permission Error: ${errorMessage}`);
+                } else if (error.response.status === 404) {
+                    throw new Error(`Not Found: ${errorMessage}`);
+                }
+
+                throw new Error(errorMessage);
+            }
+            throw error;
+        }
+    },
 };
 
 // Legacy functions for backward compatibility

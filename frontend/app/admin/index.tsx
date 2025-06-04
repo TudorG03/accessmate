@@ -1,32 +1,35 @@
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { ProtectedRoute } from '../../components/ProtectedRoute';
-import { UserRole } from '@/types/auth.types';
-import { useAuthStore } from '@/stores/auth/auth.store';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Image,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { ProtectedRoute } from "../../components/ProtectedRoute";
+import { UserRole } from "@/types/auth.types";
+import { useAuthStore } from "@/stores/auth/auth.store";
 
 export default function AdminDashboard() {
   const logout = useAuthStore((state) => state.logout);
   const user = useAuthStore((state) => state.user);
 
   const navigateToUsers = () => {
-    router.push('/admin/users');
+    router.push("/admin/users");
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: () => logout(),
-        },
-      ]
-    );
+    Alert.alert("Logout", "Are you sure you want to logout?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Logout",
+        style: "destructive",
+        onPress: () => logout(),
+      },
+    ]);
   };
 
   return (
@@ -54,39 +57,64 @@ export default function AdminDashboard() {
               <Text className="text-white font-medium ml-2">Logout</Text>
             </TouchableOpacity>
           </View>
-          
-          <TouchableOpacity 
+
+          {/* App Logo */}
+          <View className="items-center my-12">
+            <Image
+              source={require("@/assets/images/accessmate-high-resolution-logo-black-transparent.png")}
+              className="w-48 h-16"
+              resizeMode="contain"
+            />
+          </View>
+
+          <TouchableOpacity
             className="bg-white rounded-lg shadow-sm p-4 mb-4 border border-gray-200"
             onPress={navigateToUsers}
           >
             <View className="flex-row items-center justify-between">
               <View className="flex-1 disabled">
-                <Text className="text-lg font-semibold mb-2">User Management</Text>
-                <Text className="text-gray-600">View and manage user accounts</Text>
+                <Text className="text-lg font-semibold mb-2">
+                  User Management
+                </Text>
+                <Text className="text-gray-600">
+                  View and manage user accounts
+                </Text>
               </View>
               <Ionicons name="chevron-forward" size={24} color="#6B7280" />
             </View>
           </TouchableOpacity>
-          
+
           <View className="bg-white rounded-lg shadow-sm p-4 mb-4 disabled">
-            <Text className="text-lg font-semibold mb-2">Content Management</Text>
+            <Text className="text-lg font-semibold mb-2">
+              Content Management
+            </Text>
             <Text className="text-gray-600">Edit application content</Text>
-            <Text className="text-red-500">This feature is currently unavailable</Text>
+            <Text className="text-red-500">
+              This feature is currently unavailable
+            </Text>
           </View>
-          
+
           <View className="bg-white rounded-lg shadow-sm p-4 mb-4 disabled">
             <Text className="text-lg font-semibold mb-2">Analytics</Text>
-            <Text className="text-gray-600">View application usage statistics</Text>
-            <Text className="text-red-500">This feature is currently unavailable</Text>
+            <Text className="text-gray-600">
+              View application usage statistics
+            </Text>
+            <Text className="text-red-500">
+              This feature is currently unavailable
+            </Text>
           </View>
-          
+
           <View className="bg-white rounded-lg shadow-sm p-4 mb-4 disabled">
             <Text className="text-lg font-semibold mb-2">Settings</Text>
-            <Text className="text-gray-600">Configure application settings</Text>
-            <Text className="text-red-500">This feature is currently unavailable</Text>
+            <Text className="text-gray-600">
+              Configure application settings
+            </Text>
+            <Text className="text-red-500">
+              This feature is currently unavailable
+            </Text>
           </View>
         </ScrollView>
       </SafeAreaView>
     </ProtectedRoute>
   );
-} 
+}

@@ -2,6 +2,33 @@ import * as Notifications from "expo-notifications";
 import { useLocationStore } from "@/stores/location/location.store";
 import { MarkerLocation } from "@/types/marker.types";
 import { registerCleanupFunction } from "./cleanup.service";
+import { useAuthStore } from "@/stores/auth/auth.store";
+import { UserRole } from "@/types/auth.types";
+
+/**
+ * Check if the current user has the 'user' role and is allowed to receive notifications
+ */
+function canReceiveLocationNotifications(): boolean {
+    try {
+        const { user, isAuthenticated } = useAuthStore.getState();
+        
+        if (!isAuthenticated || !user) {
+            console.log("🔔 LocationNotifications: User not authenticated, blocking notifications");
+            return false;
+        }
+
+        if (user.role !== UserRole.USER) {
+            console.log(`🔔 LocationNotifications: User role is '${user.role}', not 'user'. Blocking notifications for non-user roles.`);
+            return false;
+        }
+
+        console.log("🔔 LocationNotifications: User role verification passed, notifications allowed");
+        return true;
+    } catch (error) {
+        console.error("❌ LocationNotifications: Error checking user role:", error);
+        return false;
+    }
+}
 
 // Types for location-based notifications
 export interface LocationNotificationConfig {
@@ -221,6 +248,12 @@ class LocationNotificationService {
             console.log(
                 `🔔 Triggering location notification: ${trigger.config.id}`,
             );
+
+            // Check if user is allowed to receive notifications (role-based filtering)
+            if (!canReceiveLocationNotifications()) {
+                console.log(`🔔 User not eligible for location notifications, skipping trigger: ${trigger.config.id}`);
+                return;
+            }
 
             await Notifications.scheduleNotificationAsync({
                 content: {

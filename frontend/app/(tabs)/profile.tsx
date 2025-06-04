@@ -40,26 +40,6 @@ export default function ProfileScreen() {
       title: "My Preferences",
       onPress: () => setPreferencesModalVisible(true),
     },
-    {
-      icon: "notifications-outline" as const,
-      title: "Notifications",
-      onPress: () => console.log("Notifications pressed"),
-    },
-    {
-      icon: "shield-checkmark-outline" as const,
-      title: "Privacy & Security",
-      onPress: () => console.log("Privacy pressed"),
-    },
-    {
-      icon: "help-circle-outline" as const,
-      title: "Help & Support",
-      onPress: () => console.log("Help pressed"),
-    },
-    {
-      icon: "document-text-outline" as const,
-      title: "Terms & Policies",
-      onPress: () => console.log("Terms pressed"),
-    },
   ];
 
   return (

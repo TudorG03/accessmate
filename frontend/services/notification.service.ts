@@ -1,14 +1,40 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
-import { ObstacleType } from "@/types/marker.types";
 import { initializeNotificationListeners } from "./notification-events.service";
 import { handleNotificationTap } from "./notification-handler.service";
+import { useAuthStore } from "@/stores/auth/auth.store";
+import { UserRole } from "@/types/auth.types";
 
 // Define notification channels for Android
 export const OBSTACLE_NOTIFICATION_CHANNEL = "obstacle-notifications";
 
 // Track if notifications have been initialized
 let notificationsInitialized = false;
+
+/**
+ * Check if the current user has the 'user' role and is allowed to receive notifications
+ */
+function canReceiveNotifications(): boolean {
+    try {
+        const { user, isAuthenticated } = useAuthStore.getState();
+        
+        if (!isAuthenticated || !user) {
+            console.log("🔔 User not authenticated, blocking notifications");
+            return false;
+        }
+
+        if (user.role !== UserRole.USER) {
+            console.log(`🔔 User role is '${user.role}', not 'user'. Blocking notifications for non-user roles.`);
+            return false;
+        }
+
+        console.log("🔔 User role verification passed, notifications allowed");
+        return true;
+    } catch (error) {
+        console.error("❌ Error checking user role:", error);
+        return false;
+    }
+}
 
 /**
  * Request notification permissions
@@ -168,6 +194,12 @@ export async function sendObstacleValidationNotification(
             `🔔 Preparing validation notification for ${obstacleType} with ${markers.length} markers`,
         );
 
+        // Check if user is allowed to receive notifications (role-based filtering)
+        if (!canReceiveNotifications()) {
+            console.log("🔔 User not eligible for notifications, skipping notification send");
+            return false;
+        }
+
         // Make sure notifications are initialized
         if (!notificationsInitialized) {
             console.log(
@@ -247,6 +279,12 @@ export async function sendObstacleValidationNotification(
  */
 export async function sendTestNotification(): Promise<boolean> {
     try {
+        // Check if user is allowed to receive notifications (role-based filtering)
+        if (!canReceiveNotifications()) {
+            console.log("🔔 User not eligible for test notifications, skipping notification send");
+            return false;
+        }
+
         // Make sure notifications are initialized
         if (!notificationsInitialized) {
             const initialized = await initializeNotifications();

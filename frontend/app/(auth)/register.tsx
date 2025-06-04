@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     View,
     Text,
@@ -26,6 +26,18 @@ export default function RegisterScreen() {
     const [confirmPassword, setConfirmPassword] = useState("");
     const [localError, setLocalError] = useState<string | null>(null);
 
+    // Auto-clear errors after 5 seconds
+    useEffect(() => {
+        if (localError || error) {
+            const timer = setTimeout(() => {
+                setLocalError(null);
+                clearError();
+            }, 5000);
+
+            return () => clearTimeout(timer);
+        }
+    }, [localError, error, clearError]);
+
     const handleRegister = async () => {
         try {
             // Clear any previous errors
@@ -39,6 +51,14 @@ export default function RegisterScreen() {
             }
             if (!password.trim()) {
                 setLocalError("Password is required");
+                return;
+            }
+            if (!confirmPassword.trim()) {
+                setLocalError("Please confirm your password");
+                return;
+            }
+            if (password !== confirmPassword) {
+                setLocalError("Passwords do not match");
                 return;
             }
             if (!fullName.trim()) {

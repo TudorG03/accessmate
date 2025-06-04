@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { ProtectedRoute } from '../../components/ProtectedRoute';
@@ -51,6 +51,15 @@ export default function ModeratorDashboard() {
             </TouchableOpacity>
           </View>
           
+          {/* App Logo */}
+          <View className="items-center my-12">
+            <Image
+              source={require('@/assets/images/accessmate-high-resolution-logo-black-transparent.png')}
+              className="w-48 h-16"
+              resizeMode="contain"
+            />
+          </View>
+          
           {/* Review Management Card */}
           <TouchableOpacity
             className="bg-white rounded-lg shadow-sm p-4 mb-4 border border-gray-200"
@@ -79,28 +88,6 @@ export default function ModeratorDashboard() {
             </View>
           </TouchableOpacity>
 
-          {/* Quick Stats Card */}
-          <View className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg p-4 mb-4">
-            <Text className="text-white text-lg font-semibold mb-2">Quick Overview</Text>
-            <View className="flex-row justify-between">
-              <View className="items-center">
-                <Text className="text-white text-2xl font-bold">-</Text>
-                <Text className="text-blue-100 text-xs">Total Reviews</Text>
-              </View>
-              <View className="items-center">
-                <Text className="text-white text-2xl font-bold">-</Text>
-                <Text className="text-blue-100 text-xs">This Week</Text>
-              </View>
-              <View className="items-center">
-                <Text className="text-white text-2xl font-bold">-</Text>
-                <Text className="text-blue-100 text-xs">Avg Rating</Text>
-              </View>
-            </View>
-            <Text className="text-blue-100 text-xs mt-2">
-              Visit Review Management for detailed statistics
-            </Text>
-          </View>
-
           {/* Moderator Guidelines */}
           <View className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
             <View className="flex-row items-center mb-2">
@@ -127,7 +114,7 @@ export default function ModeratorDashboard() {
           {/* Recent Activity Placeholder */}
           <View className="bg-white rounded-lg shadow-sm p-4 mb-4 border border-gray-200">
             <Text className="text-lg font-semibold text-gray-900 mb-2">Recent Activity</Text>
-            <Text className="text-gray-500 text-center py-4">
+            <Text className="text-red-500 text-center py-4">
               Activity feed will be available in future updates
             </Text>
           </View>
