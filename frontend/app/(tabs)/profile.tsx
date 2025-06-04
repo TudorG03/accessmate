@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, Pressable, ScrollView, Modal, TouchableOpacity, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -9,13 +9,24 @@ import { UnitPreferenceSelector } from "../../components/UnitPreferenceSelector"
 import PreferencesModal from "../../components/settings/PreferencesModal";
 import TopActivityTypes from "../../components/settings/TopActivityTypes";
 import { ProfilePictureUpload, AccountInfoModal } from "../../components/profile";
+import { useLocalSearchParams, router } from "expo-router";
 
 export default function ProfileScreen() {
   const { logout, user } = useAuth();
   const { colors, classes, isDark, styles } = useTheme();
+  const params = useLocalSearchParams();
   const [preferencesModalVisible, setPreferencesModalVisible] = useState(false);
   const [profilePictureModalVisible, setProfilePictureModalVisible] = useState(false);
   const [accountInfoModalVisible, setAccountInfoModalVisible] = useState(false);
+
+  // Handle navigation parameters to open preferences modal
+  useEffect(() => {
+    if (params.openPreferences === "true") {
+      setPreferencesModalVisible(true);
+      // Clear the parameter to prevent the modal from reopening
+      router.setParams({ openPreferences: undefined });
+    }
+  }, [params.openPreferences]);
 
   const handleLogout = async () => {
     await logout();
