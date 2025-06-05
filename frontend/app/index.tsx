@@ -2,7 +2,6 @@ import { View, Text, Pressable, StyleSheet, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useRef } from "react";
-import { Ionicons } from "@expo/vector-icons";
 import { Video, ResizeMode } from "expo-av";
 
 export default function LandingPage() {
@@ -92,22 +91,6 @@ export default function LandingPage() {
                         >
                             <Text className="text-center text-lg font-semibold text-gray-800">
                                 Create Account
-                            </Text>
-                        </Pressable>
-
-                        {/* Settings button for themes */}
-                        <Pressable
-                            onPress={() => router.push('/theme-test')}
-                            className="flex-row justify-center items-center mt-2"
-                        >
-                            <Ionicons
-                                name="settings-outline"
-                                size={16}
-                                color="white"
-                                className="mr-1"
-                            />
-                            <Text className="text-sm text-white">
-                                Appearance Settings
                             </Text>
                         </Pressable>
                     </View>

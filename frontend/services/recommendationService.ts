@@ -3,12 +3,10 @@ import apiService from "./api.service";
 import {
   RecommendationRequest,
   RecommendationResponse,
-  RecommendationFeedback,
   RecommendationAnalytics,
   RecommendationHistoryResponse,
   ApiResponse,
   RecommendationLocation,
-  FeedbackAction,
   DeviceType,
   RecommendationPreferences,
 } from "@/types/recommendation.types";
@@ -121,99 +119,7 @@ export const getRecommendations = async (
   }
 };
 
-/**
- * Record feedback for a recommendation
- *
- * @param feedbackData Complete feedback data structure
- * @returns Promise that resolves to feedback ID or null if failed
- */
-export const recordRecommendationFeedback = async (
-  feedbackData: RecommendationFeedback
-): Promise<string | null> => {
-  try {
-    console.log(
-      "🎯 Recommendation Service: recordRecommendationFeedback called with data:",
-      feedbackData
-    );
 
-    if (!feedbackData.userId) {
-      console.warn("Cannot record feedback: User ID not provided");
-      return null;
-    }
-
-    const url = `${API_URL}/api/recommendations/feedback`;
-    console.log("🎯 Recommendation Service: Making API call to:", url);
-
-    const response = await apiService.post(url, feedbackData);
-
-    console.log(
-      "🎯 Recommendation Service: Feedback API call successful, response:",
-      response.data
-    );
-
-    return response.data?.feedbackId || null;
-  } catch (error) {
-    console.error("🎯 Recommendation Service: Feedback API call failed:", error);
-    if (error && typeof error === "object" && "response" in error) {
-      const axiosError = error as any;
-      console.error("🎯 Response status:", axiosError.response?.status);
-      console.error("🎯 Response data:", axiosError.response?.data);
-    }
-    return null;
-  }
-};
-
-/**
- * Simple feedback recording for basic interactions (like/dislike)
- *
- * @param userId User ID
- * @param placeId Place ID
- * @param placeName Place name
- * @param placeTypes Place types array
- * @param action Feedback action
- * @param userLocation Current user location
- * @param sessionId Optional session ID
- * @returns Promise that resolves to feedback ID or null if failed
- */
-export const recordSimpleFeedback = async (
-  userId: string,
-  placeId: string,
-  placeName: string,
-  placeTypes: string[],
-  action: FeedbackAction,
-  userLocation: RecommendationLocation,
-  sessionId?: string
-): Promise<string | null> => {
-  try {
-    const now = new Date();
-    const feedbackData: RecommendationFeedback = {
-      userId,
-      placeId,
-      placeName,
-      placeTypes,
-      action,
-      feedback: {
-        explicit: action === "dismissed" ? { liked: false } : action === "saved" ? { liked: true } : undefined,
-        implicit: {
-          sessionPosition: 1, // Will be set by calling component
-        },
-      },
-      context: {
-        userLocation,
-        timestamp: now.toISOString(),
-        timeOfDay: now.getHours(),
-        dayOfWeek: now.getDay(),
-        deviceType: "mobile", // Default to mobile for React Native
-        sessionId,
-      },
-    };
-
-    return await recordRecommendationFeedback(feedbackData);
-  } catch (error) {
-    console.error("🎯 Recommendation Service: Simple feedback failed:", error);
-    return null;
-  }
-};
 
 /**
  * Get recommendation analytics for a user
@@ -359,8 +265,6 @@ export const clearRecommendationCache = async (
 // Default export with all methods
 export default {
   getRecommendations,
-  recordRecommendationFeedback,
-  recordSimpleFeedback,
   getRecommendationAnalytics,
   getRecommendationHistory,
   clearRecommendationCache,

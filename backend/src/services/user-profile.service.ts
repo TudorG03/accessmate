@@ -1,7 +1,6 @@
 import mongoose from "mongoose";
 import NavigationHistory from "../models/history/navigation-history.mongo.ts";
 import UserProfile from "../models/recommendation/user-profile.mongo.ts";
-import RecommendationFeedback from "../models/recommendation/recommendation-feedback.mongo.ts";
 
 export interface ProfileUpdateOptions {
   forceRebuild?: boolean; // Rebuild entire profile from scratch
@@ -34,10 +33,11 @@ export class UserProfileService {
       let profile = await UserProfile.findOne({ userId: userObjectId });
 
       // Check if profile needs update
-      const needsUpdate = !profile || 
-                         (profile as any).needsUpdate() || 
-                         options.forceRebuild ||
-                         this.isProfileStale(profile);
+      const needsUpdate =
+        !profile ||
+        (profile as any).needsUpdate() ||
+        options.forceRebuild ||
+        this.isProfileStale(profile);
 
       if (needsUpdate) {
         profile = await this.buildProfile(userId, options);
@@ -45,8 +45,13 @@ export class UserProfileService {
 
       return profile;
     } catch (error) {
-      console.error(`Error getting/creating profile for user ${userId}:`, error);
-      throw new Error(`Failed to get user profile: ${(error as Error).message}`);
+      console.error(
+        `Error getting/creating profile for user ${userId}:`,
+        error
+      );
+      throw new Error(
+        `Failed to get user profile: ${(error as Error).message}`
+      );
     }
   }
 
@@ -59,18 +64,27 @@ export class UserProfileService {
   ) {
     try {
       const userObjectId = new mongoose.Types.ObjectId(userId);
-      
+
       // Get navigation history
-      const navigationHistory = await this.getNavigationHistory(userId, options);
-      
+      const navigationHistory = await this.getNavigationHistory(
+        userId,
+        options
+      );
+
       if (navigationHistory.length === 0) {
         return this.createEmptyProfile(userObjectId);
       }
 
       // Extract behavioral patterns
-      const categoryPreferences = this.extractCategoryPreferences(navigationHistory, options.weightDecay);
-      const temporalPreferences = this.extractTemporalPreferences(navigationHistory);
-      const locationPreferences = await this.extractLocationPreferences(navigationHistory);
+      const categoryPreferences = this.extractCategoryPreferences(
+        navigationHistory,
+        options.weightDecay
+      );
+      const temporalPreferences =
+        this.extractTemporalPreferences(navigationHistory);
+      const locationPreferences = await this.extractLocationPreferences(
+        navigationHistory
+      );
 
       // Update or create profile
       const profileData = {
@@ -80,7 +94,7 @@ export class UserProfileService {
         locationPreferences,
         totalVisits: navigationHistory.length,
         lastUpdated: new Date(),
-        version: 1
+        version: 1,
       };
 
       const profile = await UserProfile.findOneAndUpdate(
@@ -89,12 +103,15 @@ export class UserProfileService {
         { upsert: true, new: true, runValidators: true }
       );
 
-      console.log(`Built profile for user ${userId} with ${navigationHistory.length} visits`);
+      console.log(
+        `Built profile for user ${userId} with ${navigationHistory.length} visits`
+      );
       return profile;
-
     } catch (error) {
       console.error(`Error building profile for user ${userId}:`, error);
-      throw new Error(`Failed to build user profile: ${(error as Error).message}`);
+      throw new Error(
+        `Failed to build user profile: ${(error as Error).message}`
+      );
     }
   }
 
@@ -133,55 +150,20 @@ export class UserProfileService {
       await profile.save();
       console.log(`Updated profile incrementally for user ${userId}`);
       return profile;
-
     } catch (error) {
       console.error(`Error updating profile for user ${userId}:`, error);
-      throw new Error(`Failed to update user profile: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Incorporate feedback data into user profile
-   */
-  static async incorporateFeedback(
-    userId: string,
-    feedback: any
-  ) {
-    try {
-      const userObjectId = new mongoose.Types.ObjectId(userId);
-      const profile = await UserProfile.findOne({ userId: userObjectId });
-
-      if (!profile) {
-        console.warn(`No profile found for user ${userId} when incorporating feedback`);
-        return null;
-      }
-
-      // Adjust category preferences based on feedback
-      const weight = this.calculateFeedbackWeight(feedback);
-      const isPositive = this.isFeedbackPositive(feedback);
-
-      feedback.placeTypes.forEach((placeType: string) => {
-        const currentScore = profile.categoryPreferences.get(placeType) || 0;
-        const adjustment = isPositive ? weight * 0.1 : -weight * 0.05;
-        const newScore = Math.max(0, Math.min(1, (currentScore as number) + adjustment));
-        profile.categoryPreferences.set(placeType, newScore);
-      });
-
-      // Normalize preferences
-      this.normalizeCategoryPreferences(profile);
-
-      await profile.save();
-      return profile;
-
-    } catch (error) {
-      console.error(`Error incorporating feedback for user ${userId}:`, error);
-      throw new Error(`Failed to incorporate feedback: ${(error as Error).message}`);
+      throw new Error(
+        `Failed to update user profile: ${(error as Error).message}`
+      );
     }
   }
 
   // Private helper methods
 
-  private static async getNavigationHistory(userId: string, options: ProfileUpdateOptions) {
+  private static async getNavigationHistory(
+    userId: string,
+    options: ProfileUpdateOptions
+  ) {
     const userObjectId = new mongoose.Types.ObjectId(userId);
     let query: any = { userId: userObjectId };
 
@@ -205,12 +187,13 @@ export class UserProfileService {
 
     navigationHistory.forEach((visit, index) => {
       // Apply time-based decay (more recent visits have higher weight)
-      const ageInDays = (now - new Date(visit.timestamp).getTime()) / (1000 * 60 * 60 * 24);
+      const ageInDays =
+        (now - new Date(visit.timestamp).getTime()) / (1000 * 60 * 60 * 24);
       const timeDecay = Math.exp(-ageInDays / 30); // 30-day half-life
 
       // Apply position-based decay (more recent in list has higher weight)
       const positionDecay = Math.pow(weightDecay, index);
-      
+
       const weight = timeDecay * positionDecay;
 
       visit.placeTypes.forEach((placeType: string) => {
@@ -221,7 +204,7 @@ export class UserProfileService {
     // Normalize scores to 0-1 range
     const maxScore = Math.max(...Object.values(categoryScores));
     if (maxScore > 0) {
-      Object.keys(categoryScores).forEach(category => {
+      Object.keys(categoryScores).forEach((category) => {
         categoryScores[category] = categoryScores[category] / maxScore;
       });
     }
@@ -233,7 +216,7 @@ export class UserProfileService {
     const hourOfDay = new Array(24).fill(0);
     const dayOfWeek = new Array(7).fill(0);
 
-    navigationHistory.forEach(visit => {
+    navigationHistory.forEach((visit) => {
       const date = new Date(visit.timestamp);
       const hour = date.getHours();
       const day = date.getDay();
@@ -262,21 +245,21 @@ export class UserProfileService {
 
     return {
       preferredRadius,
-      frequentAreas: clusters.map(cluster => ({
+      frequentAreas: clusters.map((cluster) => ({
         center: {
           type: "Point",
-          coordinates: cluster.center
+          coordinates: cluster.center,
         },
         visitCount: cluster.visitCount,
-        radius: cluster.radius
-      }))
+        radius: cluster.radius,
+      })),
     };
   }
 
   private static clusterLocations(navigationHistory: any[]): LocationCluster[] {
     const clusters: LocationCluster[] = [];
-    
-    navigationHistory.forEach(visit => {
+
+    navigationHistory.forEach((visit) => {
       const coords = visit.location.coordinates;
       let addedToCluster = false;
 
@@ -286,8 +269,10 @@ export class UserProfileService {
         if (distance <= this.CLUSTER_RADIUS_THRESHOLD) {
           // Update cluster center (weighted average)
           const totalVisits = cluster.visitCount + 1;
-          cluster.center[0] = (cluster.center[0] * cluster.visitCount + coords[0]) / totalVisits;
-          cluster.center[1] = (cluster.center[1] * cluster.visitCount + coords[1]) / totalVisits;
+          cluster.center[0] =
+            (cluster.center[0] * cluster.visitCount + coords[0]) / totalVisits;
+          cluster.center[1] =
+            (cluster.center[1] * cluster.visitCount + coords[1]) / totalVisits;
           cluster.visitCount++;
           cluster.places.push(visit.placeId);
           addedToCluster = true;
@@ -301,13 +286,15 @@ export class UserProfileService {
           center: [coords[0], coords[1]],
           visitCount: 1,
           radius: this.CLUSTER_RADIUS_THRESHOLD,
-          places: [visit.placeId]
+          places: [visit.placeId],
         });
       }
     });
 
     // Filter clusters with minimum visits
-    return clusters.filter(cluster => cluster.visitCount >= this.MIN_VISITS_FOR_CLUSTER);
+    return clusters.filter(
+      (cluster) => cluster.visitCount >= this.MIN_VISITS_FOR_CLUSTER
+    );
   }
 
   private static calculatePreferredRadius(navigationHistory: any[]): number {
@@ -316,8 +303,11 @@ export class UserProfileService {
     const distances: number[] = [];
     const center = this.calculateCentroid(navigationHistory);
 
-    navigationHistory.forEach(visit => {
-      const distance = this.calculateDistance(visit.location.coordinates, center);
+    navigationHistory.forEach((visit) => {
+      const distance = this.calculateDistance(
+        visit.location.coordinates,
+        center
+      );
       distances.push(distance);
     });
 
@@ -328,8 +318,14 @@ export class UserProfileService {
   }
 
   private static calculateCentroid(navigationHistory: any[]): [number, number] {
-    const totalLng = navigationHistory.reduce((sum, visit) => sum + visit.location.coordinates[0], 0);
-    const totalLat = navigationHistory.reduce((sum, visit) => sum + visit.location.coordinates[1], 0);
+    const totalLng = navigationHistory.reduce(
+      (sum, visit) => sum + visit.location.coordinates[0],
+      0
+    );
+    const totalLat = navigationHistory.reduce(
+      (sum, visit) => sum + visit.location.coordinates[1],
+      0
+    );
     const count = navigationHistory.length;
 
     return [totalLng / count, totalLat / count];
@@ -337,14 +333,17 @@ export class UserProfileService {
 
   private static calculateDistance(coord1: number[], coord2: number[]): number {
     const R = 6371000; // Earth's radius in meters
-    const lat1Rad = coord1[1] * Math.PI / 180;
-    const lat2Rad = coord2[1] * Math.PI / 180;
-    const deltaLatRad = (coord2[1] - coord1[1]) * Math.PI / 180;
-    const deltaLngRad = (coord2[0] - coord1[0]) * Math.PI / 180;
+    const lat1Rad = (coord1[1] * Math.PI) / 180;
+    const lat2Rad = (coord2[1] * Math.PI) / 180;
+    const deltaLatRad = ((coord2[1] - coord1[1]) * Math.PI) / 180;
+    const deltaLngRad = ((coord2[0] - coord1[0]) * Math.PI) / 180;
 
-    const a = Math.sin(deltaLatRad / 2) * Math.sin(deltaLatRad / 2) +
-              Math.cos(lat1Rad) * Math.cos(lat2Rad) *
-              Math.sin(deltaLngRad / 2) * Math.sin(deltaLngRad / 2);
+    const a =
+      Math.sin(deltaLatRad / 2) * Math.sin(deltaLatRad / 2) +
+      Math.cos(lat1Rad) *
+        Math.cos(lat2Rad) *
+        Math.sin(deltaLngRad / 2) *
+        Math.sin(deltaLngRad / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
     return R * c;
@@ -356,24 +355,30 @@ export class UserProfileService {
       categoryPreferences: new Map(),
       temporalPreferences: {
         hourOfDay: new Array(24).fill(0),
-        dayOfWeek: new Array(7).fill(0)
+        dayOfWeek: new Array(7).fill(0),
       },
       locationPreferences: {
         preferredRadius: 5000,
-        frequentAreas: []
+        frequentAreas: [],
       },
       totalVisits: 0,
       lastUpdated: new Date(),
-      version: 1
+      version: 1,
     });
   }
 
   private static isProfileStale(profile: any): boolean {
-    const staleThreshold = new Date(Date.now() - this.MAX_PROFILE_AGE_HOURS * 60 * 60 * 1000);
+    const staleThreshold = new Date(
+      Date.now() - this.MAX_PROFILE_AGE_HOURS * 60 * 60 * 1000
+    );
     return profile.lastUpdated < staleThreshold;
   }
 
-  private static updateCategoryPreferences(profile: any, newVisit: any, decayFactor: number) {
+  private static updateCategoryPreferences(
+    profile: any,
+    newVisit: any,
+    decayFactor: number
+  ) {
     // Apply decay to existing preferences
     for (const [category, score] of profile.categoryPreferences.entries()) {
       profile.categoryPreferences.set(category, score * decayFactor);
@@ -396,19 +401,27 @@ export class UserProfileService {
 
     // Incremental update with smoothing
     const smoothingFactor = 1.0 / (profile.totalVisits + 1);
-    
+
     profile.temporalPreferences.hourOfDay[hour] += smoothingFactor;
     profile.temporalPreferences.dayOfWeek[day] += smoothingFactor;
 
     // Normalize
-    const hourSum = profile.temporalPreferences.hourOfDay.reduce((a: number, b: number) => a + b, 0);
-    const daySum = profile.temporalPreferences.dayOfWeek.reduce((a: number, b: number) => a + b, 0);
+    const hourSum = profile.temporalPreferences.hourOfDay.reduce(
+      (a: number, b: number) => a + b,
+      0
+    );
+    const daySum = profile.temporalPreferences.dayOfWeek.reduce(
+      (a: number, b: number) => a + b,
+      0
+    );
 
     if (hourSum > 0) {
-      profile.temporalPreferences.hourOfDay = profile.temporalPreferences.hourOfDay.map((h: number) => h / hourSum);
+      profile.temporalPreferences.hourOfDay =
+        profile.temporalPreferences.hourOfDay.map((h: number) => h / hourSum);
     }
     if (daySum > 0) {
-      profile.temporalPreferences.dayOfWeek = profile.temporalPreferences.dayOfWeek.map((d: number) => d / daySum);
+      profile.temporalPreferences.dayOfWeek =
+        profile.temporalPreferences.dayOfWeek.map((d: number) => d / daySum);
     }
   }
 
@@ -418,12 +431,19 @@ export class UserProfileService {
 
     // Try to add to existing frequent area
     for (const area of profile.locationPreferences.frequentAreas) {
-      const distance = this.calculateDistance(newCoords, area.center.coordinates);
+      const distance = this.calculateDistance(
+        newCoords,
+        area.center.coordinates
+      );
       if (distance <= area.radius) {
         // Update area center (weighted average)
         const totalVisits = area.visitCount + 1;
-        area.center.coordinates[0] = (area.center.coordinates[0] * area.visitCount + newCoords[0]) / totalVisits;
-        area.center.coordinates[1] = (area.center.coordinates[1] * area.visitCount + newCoords[1]) / totalVisits;
+        area.center.coordinates[0] =
+          (area.center.coordinates[0] * area.visitCount + newCoords[0]) /
+          totalVisits;
+        area.center.coordinates[1] =
+          (area.center.coordinates[1] * area.visitCount + newCoords[1]) /
+          totalVisits;
         area.visitCount++;
         addedToExistingArea = true;
         break;
@@ -435,10 +455,10 @@ export class UserProfileService {
       profile.locationPreferences.frequentAreas.push({
         center: {
           type: "Point",
-          coordinates: [newCoords[0], newCoords[1]]
+          coordinates: [newCoords[0], newCoords[1]],
         },
         visitCount: 1,
-        radius: this.CLUSTER_RADIUS_THRESHOLD
+        radius: this.CLUSTER_RADIUS_THRESHOLD,
       });
     }
   }
@@ -452,25 +472,4 @@ export class UserProfileService {
       }
     }
   }
-
-  private static calculateFeedbackWeight(feedback: any): number {
-    const actionWeights = {
-      visited: 1.0,
-      saved: 0.8,
-      shared: 0.7,
-      clicked: 0.5,
-      viewed: 0.3,
-      dismissed: 0.6
-    };
-
-    return (actionWeights as any)[feedback.action] || 0.1;
-  }
-
-  private static isFeedbackPositive(feedback: any): boolean {
-    const positiveActions = ["visited", "saved", "shared"];
-    const explicitPositive = feedback.feedback?.explicit?.liked === true || 
-                           (feedback.feedback?.explicit?.rating && feedback.feedback.explicit.rating >= 4);
-    
-    return positiveActions.includes(feedback.action) || explicitPositive;
-  }
-} 
+}

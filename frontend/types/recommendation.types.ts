@@ -168,94 +168,7 @@ export interface RecommendationRequest {
   preferences?: RecommendationPreferences;
 }
 
-/**
- * Feedback action types
- */
-export type FeedbackAction = "viewed" | "visited" | "dismissed" | "saved" | "shared" | "clicked";
 
-/**
- * Explicit feedback data
- */
-export interface ExplicitFeedback {
-  rating?: number; // 1-5 star rating
-  liked?: boolean; // thumbs up/down
-  comment?: string; // user comment
-}
-
-/**
- * Implicit feedback data
- */
-export interface ImplicitFeedback {
-  dwellTime?: number; // time spent viewing recommendation (seconds)
-  clickDepth?: number; // how many details they explored
-  sessionPosition?: number; // position in recommendation list
-}
-
-/**
- * Feedback context information
- */
-export interface FeedbackContext {
-  userLocation: RecommendationLocation;
-  timestamp: string; // ISO string
-  timeOfDay: number; // hour of day (0-23)
-  dayOfWeek: number; // day of week (0-6)
-  deviceType?: DeviceType;
-  sessionId?: string;
-}
-
-/**
- * Actual visit outcome data
- */
-export interface ActualVisit {
-  confirmed: boolean; // did they actually visit the place
-  visitDuration?: number; // minutes spent at location
-  followUpActions?: string[]; // what they did after (review, photo, etc.)
-}
-
-/**
- * Satisfaction outcome data
- */
-export interface Satisfaction {
-  score: number; // 1-5 satisfaction with recommendation
-  wouldRecommend?: boolean; // would recommend to others
-}
-
-/**
- * Feedback outcome data
- */
-export interface FeedbackOutcome {
-  actualVisit?: ActualVisit;
-  satisfaction?: Satisfaction;
-}
-
-/**
- * Feedback metadata
- */
-export interface FeedbackMetadata {
-  recommendationScore?: number; // original ML score
-  recommendationReasoning?: string[]; // why it was recommended
-  userProfileVersion?: number; // version of user profile when recommended
-  modelVersion?: string; // ML model version used
-}
-
-/**
- * Complete feedback data structure
- */
-export interface RecommendationFeedback {
-  userId: string;
-  placeId: string;
-  placeName: string;
-  placeTypes: string[];
-  action: FeedbackAction;
-  feedback?: {
-    explicit?: ExplicitFeedback;
-    implicit?: ImplicitFeedback;
-  };
-  context: FeedbackContext;
-  outcome?: FeedbackOutcome;
-  metadata?: FeedbackMetadata;
-  recommendationId?: string; // reference to cached recommendation
-}
 
 /**
  * Analytics response structure
@@ -264,11 +177,6 @@ export interface RecommendationAnalytics {
   totalRecommendations: number;
   cachingEfficiency: number;
   averageExecutionTime: number;
-  feedbackStats: {
-    totalFeedback: number;
-    positiveRate: number;
-    engagementRate: number;
-  };
   profileStats: {
     completeness: number;
     lastUpdated: string; // ISO string
@@ -342,8 +250,6 @@ export interface RecommendationLoadingState {
  */
 export interface RecommendationCardProps {
   recommendation: Recommendation;
-  onLike: (placeId: string) => void;
-  onDislike: (placeId: string) => void;
   onPress: (placeId: string) => void;
   loading?: boolean;
 }

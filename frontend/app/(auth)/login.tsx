@@ -52,7 +52,6 @@ export default function LoginScreen() {
             }
 
             await login(email, password);
-            // Navigation is handled in the auth store
         } catch (err) {
             console.error("Login error:", err);
             setLocalError(err instanceof Error ? err.message : "An unexpected error occurred");

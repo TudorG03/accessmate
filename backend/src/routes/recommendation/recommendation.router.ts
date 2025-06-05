@@ -2,7 +2,6 @@ import { Router } from "https://deno.land/x/oak/mod.ts";
 import {
   getRecommendations,
   getRecommendationAnalytics,
-  recordRecommendationFeedback,
   getUserRecommendationHistory,
   clearRecommendationCache,
 } from "./recommendation.controller.ts";
@@ -19,8 +18,7 @@ router.get("/user/:userId/analytics", authMiddleware, getRecommendationAnalytics
 // GET - Get user's recommendation history
 router.get("/user/:userId/history", authMiddleware, getUserRecommendationHistory);
 
-// POST - Record recommendation feedback
-router.post("/feedback", authMiddleware, recordRecommendationFeedback);
+
 
 // DELETE - Clear recommendation cache for a user
 router.delete("/user/:userId/cache", authMiddleware, clearRecommendationCache);

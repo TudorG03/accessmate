@@ -3,9 +3,6 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { MMKV } from "react-native-mmkv";
 import { router } from "expo-router";
 import {
-  ActivityType,
-  Budget,
-  TransportMethod,
   User,
   UserPreferences,
   UserRole,

@@ -280,7 +280,6 @@ export class GooglePlacesService {
 
       await this.checkRateLimit();
 
-      // Handle both old and new place ID formats
       const fullPlaceId = placeId.startsWith("places/") ? placeId : `places/${placeId}`;
 
       console.log(`Fetching place details for: ${fullPlaceId}`);
@@ -523,14 +522,6 @@ export class GooglePlacesService {
       const ratingCountDiff = (b.userRatingsTotal || 0) - (a.userRatingsTotal || 0);
       if (Math.abs(ratingCountDiff) > 10) {
         return ratingCountDiff;
-      }
-
-      // Tertiary sort by business status (OPERATIONAL is better)
-      if (a.businessStatus === "OPERATIONAL" && b.businessStatus !== "OPERATIONAL") {
-        return -1;
-      }
-      if (b.businessStatus === "OPERATIONAL" && a.businessStatus !== "OPERATIONAL") {
-        return 1;
       }
 
       return 0;

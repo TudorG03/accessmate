@@ -1,8 +1,7 @@
-import { Context, RouterContext } from "https://deno.land/x/oak/mod.ts";
+import { RouterContext } from "https://deno.land/x/oak/mod.ts";
 import mongoose from "mongoose";
 import { RecommendationOrchestrationService } from "../../services/recommendation-orchestration.service.ts";
 import RecommendationCache from "../../models/recommendation/recommendation-cache.mongo.ts";
-import RecommendationFeedback from "../../models/recommendation/recommendation-feedback.mongo.ts";
 
 // Get personalized recommendations for a user
 export const getRecommendations = async (
@@ -277,130 +276,7 @@ export const getUserRecommendationHistory = async (
   }
 };
 
-// Record recommendation feedback
-export const recordRecommendationFeedback = async (ctx: Context) => {
-  try {
-    if (!ctx.request.hasBody) {
-      ctx.response.status = 400;
-      ctx.response.body = { message: "Request body is required" };
-      return;
-    }
 
-    const body = await ctx.request.body.json();
-    console.log("Recording recommendation feedback:", body);
-
-    const {
-      userId,
-      placeId,
-      placeName,
-      placeTypes,
-      action,
-      feedback,
-      context,
-      outcome,
-      metadata,
-      recommendationId,
-    } = body;
-
-    // Validate required fields
-    if (!userId || !placeId || !placeName || !placeTypes || !action || !context) {
-      ctx.response.status = 400;
-      ctx.response.body = { 
-        message: "Missing required fields: userId, placeId, placeName, placeTypes, action, context" 
-      };
-      return;
-    }
-
-    // Validate userId format
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      ctx.response.status = 400;
-      ctx.response.body = { message: "Invalid user ID format" };
-      return;
-    }
-
-    // Validate action type
-    const validActions = ["viewed", "visited", "dismissed", "saved", "shared", "clicked"];
-    if (!validActions.includes(action)) {
-      ctx.response.status = 400;
-      ctx.response.body = { 
-        message: `Invalid action. Must be one of: ${validActions.join(", ")}` 
-      };
-      return;
-    }
-
-    // Validate context structure
-    if (!context.userLocation || !context.timestamp || 
-        typeof context.timeOfDay !== 'number' || typeof context.dayOfWeek !== 'number') {
-      ctx.response.status = 400;
-      ctx.response.body = { 
-        message: "Invalid context structure. Required: userLocation, timestamp, timeOfDay, dayOfWeek" 
-      };
-      return;
-    }
-
-    // Convert userId to ObjectId
-    const userObjectId = new mongoose.Types.ObjectId(userId);
-    
-    // Convert recommendationId if provided
-    let recommendationObjectId;
-    if (recommendationId) {
-      if (!mongoose.Types.ObjectId.isValid(recommendationId)) {
-        ctx.response.status = 400;
-        ctx.response.body = { message: "Invalid recommendation ID format" };
-        return;
-      }
-      recommendationObjectId = new mongoose.Types.ObjectId(recommendationId);
-    }
-
-    // Create feedback document
-    const feedbackDoc = new RecommendationFeedback({
-      userId: userObjectId,
-      recommendationId: recommendationObjectId,
-      placeId,
-      placeName,
-      placeTypes,
-      action,
-      feedback: {
-        explicit: feedback?.explicit || {},
-        implicit: feedback?.implicit || {},
-      },
-      context: {
-        userLocation: {
-          type: "Point",
-          coordinates: [context.userLocation.longitude, context.userLocation.latitude],
-        },
-        timestamp: new Date(context.timestamp),
-        timeOfDay: context.timeOfDay,
-        dayOfWeek: context.dayOfWeek,
-        deviceType: context.deviceType,
-        sessionId: context.sessionId,
-      },
-      outcome: outcome || {},
-      metadata: {
-        ...metadata,
-        modelVersion: "1.0.0",
-      },
-    });
-
-    await feedbackDoc.save();
-
-    ctx.response.status = 201;
-    ctx.response.body = {
-      success: true,
-      message: "Recommendation feedback recorded successfully",
-      feedbackId: feedbackDoc._id,
-    };
-
-  } catch (error) {
-    console.error("Error recording recommendation feedback:", error);
-    ctx.response.status = 500;
-    ctx.response.body = { 
-      success: false,
-      message: "Failed to record recommendation feedback",
-      error: (error as Error).message 
-    };
-  }
-};
 
 // Clear recommendation cache for a user
 export const clearRecommendationCache = async (

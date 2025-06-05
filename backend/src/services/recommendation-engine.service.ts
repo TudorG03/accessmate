@@ -73,11 +73,8 @@ export class RecommendationEngine {
 
   // Category similarity thresholds and weights
   private static readonly CATEGORY_EXACT_MATCH_BONUS = 0.3;
-  private static readonly CATEGORY_RELATED_MATCH_BONUS = 0.15;
-  private static readonly MIN_CATEGORY_VISITS = 3; // Minimum visits to consider a category preference
 
   // Geographic scoring parameters
-  private static readonly LOCATION_DECAY_RATE = 0.5; // How quickly location preference decays with distance
   private static readonly MAX_LOCATION_DISTANCE = 50000; // 50km max distance consideration
 
   // Temporal scoring parameters
@@ -351,12 +348,6 @@ export class RecommendationEngine {
       const reviewScore = Math.min(1, Math.log10(place.userRatingsTotal) / 3); // Log scale, cap at 1000 reviews
       score += reviewScore * 0.3;
     }
-
-    // Business status component
-    if (place.businessStatus === "OPERATIONAL") {
-      score += 0.1;
-    }
-
     return Math.min(1, score);
   }
 

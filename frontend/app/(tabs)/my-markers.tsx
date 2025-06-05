@@ -20,47 +20,8 @@ export default function MyMarkersScreen() {
     const [detailsModalVisible, setDetailsModalVisible] = useState(false);
     const [editModalVisible, setEditModalVisible] = useState(false);
     const [markerToEdit, setMarkerToEdit] = useState<Marker | null>(null);
-    const { isDark, colors } = useTheme();
+    const { isDark } = useTheme();
     const router = useRouter();
-
-    // Debug function to verify auth state and marker retrieval
-    const debugMarkerIssues = useCallback(async () => {
-        console.log('🔎 DEBUG MY MARKERS SCREEN 🔎');
-        console.log('🔎 Auth State:', { isAuthenticated, user: user ? { id: user.id, email: user.email } : null });
-
-        try {
-            console.log('🔎 Fetching markers directly...');
-            const response = await MarkerService.getMarkers();
-            console.log('🔎 All markers from API:', response);
-            console.log('🔎 Total markers:', Array.isArray(response) ? response.length : 0);
-
-            if (user && user.id && Array.isArray(response)) {
-                const filteredMarkers = response.filter(marker => marker.userId === user.id);
-                console.log(`🔎 Markers filtered by userId=${user.id}:`, filteredMarkers);
-                console.log('🔎 Filtered count:', filteredMarkers.length);
-
-                if (filteredMarkers.length === 0 && response.length > 0) {
-                    // If we have markers but none match the user ID, log the different user IDs
-                    const userIds = [...new Set(response.map(m => m.userId))];
-                    console.log('🔎 Available userIds in markers:', userIds);
-                    console.log('🔎 USER ID MISMATCH DETECTED - Current user ID does not match any marker userIds');
-                }
-            }
-        } catch (error) {
-            console.error('🔎 Error in debug function:', error);
-        }
-    }, [user, isAuthenticated]);
-
-    // Call debug function when component mounts
-    useEffect(() => {
-        debugMarkerIssues();
-    }, [debugMarkerIssues]);
-
-    // Debug user markers when they change
-    useEffect(() => {
-        console.log('📱 My Markers Screen - userMarkers updated:', userMarkers);
-        console.log('📱 userMarkers count:', Array.isArray(userMarkers) ? userMarkers.length : 0);
-    }, [userMarkers]);
 
     // Load user's markers when the screen is first rendered
     useEffect(() => {

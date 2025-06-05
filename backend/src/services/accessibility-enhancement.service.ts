@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import Review from "../models/review/review.mongo.ts";
 import User from "../models/auth/auth.mongo.ts";
 import { ScoredRecommendation } from "./recommendation-engine.service.ts";

@@ -3,7 +3,6 @@ import { UserProfileService } from "./user-profile.service.ts";
 import { RecommendationEngine, RecommendationRequest, ScoredRecommendation } from "./recommendation-engine.service.ts";
 import { AccessibilityEnhancement, EnhancedRecommendation } from "./accessibility-enhancement.service.ts";
 import RecommendationCache, { IRecommendationCache } from "../models/recommendation/recommendation-cache.mongo.ts";
-import RecommendationFeedback, { IRecommendationFeedback } from "../models/recommendation/recommendation-feedback.mongo.ts";
 import { IUserProfile } from "../models/recommendation/user-profile.mongo.ts";
 
 export interface OrchestrationRequest {
@@ -59,23 +58,7 @@ export interface OrchestrationResponse {
   };
 }
 
-export interface FeedbackRequest {
-  userId: string;
-  placeId: string;
-  action: "viewed" | "visited" | "dismissed" | "saved" | "shared" | "clicked";
-  context?: {
-    recommendationId?: string;
-    sessionId?: string;
-    dwellTime?: number;
-    clickDepth?: number;
-    actualVisitConfirmed?: boolean;
-  };
-  explicitFeedback?: {
-    rating?: number;
-    liked?: boolean;
-    comment?: string;
-  };
-}
+
 
 export class RecommendationOrchestrationService {
   private static readonly DEFAULT_SEARCH_RADIUS = 5000; // 5km
@@ -285,56 +268,7 @@ export class RecommendationOrchestrationService {
     }
   }
 
-  /**
-   * Process user feedback on recommendations
-   */
-  static async processFeedback(feedback: FeedbackRequest): Promise<void> {
-    try {
-      console.log(`Processing feedback: ${feedback.action} for place ${feedback.placeId}`);
 
-      // Step 1: Record the feedback
-      const feedbackRecord = new RecommendationFeedback({
-        userId: feedback.userId,
-        placeId: feedback.placeId,
-        placeName: "Unknown Place", // Would be filled from place details
-        placeTypes: [],
-        action: feedback.action,
-        feedback: {
-          explicit: feedback.explicitFeedback || {},
-          implicit: {
-            dwellTime: feedback.context?.dwellTime,
-            clickDepth: feedback.context?.clickDepth,
-          },
-        },
-        context: {
-          userLocation: {
-            type: "Point",
-            coordinates: [0, 0], // Would be filled from request
-          },
-          timestamp: new Date(),
-          timeOfDay: new Date().getHours(),
-          dayOfWeek: new Date().getDay(),
-          deviceType: "mobile",
-          sessionId: feedback.context?.sessionId,
-        },
-        metadata: {},
-      });
-
-      await feedbackRecord.save();
-
-      // Step 2: Update user profile with feedback
-      await UserProfileService.incorporateFeedback(feedback.userId, feedbackRecord);
-
-      // Step 3: Invalidate relevant caches
-      await this.invalidateUserCaches(feedback.userId);
-
-      console.log(`Feedback processed successfully for user ${feedback.userId}`);
-
-    } catch (error) {
-      console.error("Error processing feedback:", error);
-      throw new Error(`Feedback processing failed: ${(error as Error).message}`);
-    }
-  }
 
   /**
    * Get recommendation analytics for a user
@@ -343,11 +277,6 @@ export class RecommendationOrchestrationService {
     totalRecommendations: number;
     cachingEfficiency: number;
     averageExecutionTime: number;
-    feedbackStats: {
-      totalFeedback: number;
-      positiveRate: number;
-      engagementRate: number;
-    };
     profileStats: {
       completeness: number;
       lastUpdated: Date;
@@ -365,17 +294,11 @@ export class RecommendationOrchestrationService {
 
       // Get basic statistics
       const cacheCount = await RecommendationCache.countDocuments({ userId });
-      const feedbackCount = await RecommendationFeedback.countDocuments({ userId });
 
       return {
         totalRecommendations: cacheCount,
         cachingEfficiency: 0.75, // Placeholder
         averageExecutionTime: 1500, // Placeholder
-        feedbackStats: {
-          totalFeedback: feedbackCount,
-          positiveRate: 0.6, // Placeholder
-          engagementRate: 0.8, // Placeholder
-        },
         profileStats: {
           completeness: this.calculateProfileCompleteness(userProfile),
           lastUpdated: userProfile.lastUpdated,
