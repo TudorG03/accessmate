@@ -14,7 +14,7 @@ async function startServer() {
     console.log(`Server running on ${HOST}:${PORT}`);
   } catch (error) {
     console.error("Failed to start server:", error);
-    Deno.exit(1);
+    throw error;
   }
 }
 

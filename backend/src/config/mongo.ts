@@ -8,7 +8,7 @@ const ADMIN_PASS = Deno.env.get("MONGO_ATLAS_ADMIN_PASS");
 
 if (!ADMIN_USER || !ADMIN_PASS) {
   console.error("MongoDB credentials not found in environment variables");
-  Deno.exit(1);
+  throw new Error("MongoDB credentials not found in environment variables");
 }
 
 const MONGO_ATLAS_CONNECTION_STRING =
