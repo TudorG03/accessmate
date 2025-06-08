@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { ModeratorService, ModeratorReview } from '@/services/moderator.service';
+import { validateSearchQuery, sanitizeInput } from '@/utils/validation.utils';
 
 interface ReviewListProps {
   onReviewSelect?: (review: ModeratorReview) => void;
@@ -33,6 +34,7 @@ export const ReviewListComponent: React.FC<ReviewListProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRating, setSelectedRating] = useState<number | 'all'>('all');
   const [error, setError] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState('');
 
   // Load reviews on mount and when refreshTrigger changes
   useEffect(() => {
@@ -63,11 +65,27 @@ export const ReviewListComponent: React.FC<ReviewListProps> = ({
     loadReviews();
   };
 
+  const handleSearchChange = (text: string) => {
+    const sanitizedText = sanitizeInput(text);
+
+    if (sanitizedText) {
+      const validation = validateSearchQuery(sanitizedText);
+      if (!validation.isValid) {
+        setSearchError(validation.message || '');
+        setSearchQuery(sanitizedText);
+        return;
+      }
+    }
+
+    setSearchError('');
+    setSearchQuery(sanitizedText);
+  };
+
   const filterReviews = () => {
     let filtered = reviews;
 
     // Filter by search query
-    if (searchQuery.trim()) {
+    if (searchQuery.trim() && !searchError) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(
         (review) =>
@@ -80,13 +98,13 @@ export const ReviewListComponent: React.FC<ReviewListProps> = ({
 
     // Filter by rating
     if (selectedRating !== 'all') {
-      filtered = filtered.filter((review) => 
+      filtered = filtered.filter((review) =>
         Math.floor(review.accessibilityRating) === selectedRating
       );
     }
 
     // Sort by creation date (newest first)
-    filtered = filtered.sort((a, b) => 
+    filtered = filtered.sort((a, b) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
 
@@ -138,7 +156,7 @@ export const ReviewListComponent: React.FC<ReviewListProps> = ({
       elevator: 'elevator',
       adaptedToilets: 'human-male-female',
     };
-    
+
     const labels = {
       ramp: 'Ramp',
       wideDoors: 'Wide Doors',
@@ -152,16 +170,15 @@ export const ReviewListComponent: React.FC<ReviewListProps> = ({
     return (
       <View className="flex-row flex-wrap mt-2">
         {validQuestions.map(([key, value]) => (
-          <View 
-            key={key} 
-            className={`flex-row items-center mr-3 mb-1 px-2 py-1 rounded-full ${
-              value ? 'bg-green-100' : 'bg-red-100'
-            }`}
+          <View
+            key={key}
+            className={`flex-row items-center mr-3 mb-1 px-2 py-1 rounded-full ${value ? 'bg-green-100' : 'bg-red-100'
+              }`}
           >
-            <MaterialCommunityIcons 
-              name={icons[key as keyof typeof icons] as any} 
-              size={12} 
-              color={value ? '#15803d' : '#dc2626'} 
+            <MaterialCommunityIcons
+              name={icons[key as keyof typeof icons] as any}
+              size={12}
+              color={value ? '#15803d' : '#dc2626'}
             />
             <Text className={`text-xs ml-1 ${value ? 'text-green-800' : 'text-red-800'}`}>
               {labels[key as keyof typeof labels]}
@@ -190,12 +207,12 @@ export const ReviewListComponent: React.FC<ReviewListProps> = ({
             </Text>
           </View>
         </View>
-        
+
         <View className="flex-row items-center">
-          <Ionicons 
-            name={getRatingIcon(review.accessibilityRating)} 
-            size={16} 
-            color="#F59E0B" 
+          <Ionicons
+            name={getRatingIcon(review.accessibilityRating)}
+            size={16}
+            color="#F59E0B"
           />
           <Text className={`ml-1 font-bold ${getRatingColor(review.accessibilityRating)}`}>
             {review.accessibilityRating.toFixed(1)}
@@ -257,24 +274,22 @@ export const ReviewListComponent: React.FC<ReviewListProps> = ({
       {(['all', 1, 2, 3, 4, 5] as const).map((rating) => (
         <TouchableOpacity
           key={rating}
-          className={`mr-2 px-3 py-2 rounded-full flex-row items-center ${
-            selectedRating === rating
-              ? 'bg-blue-500'
-              : 'bg-gray-200'
-          }`}
+          className={`mr-2 px-3 py-2 rounded-full flex-row items-center ${selectedRating === rating
+            ? 'bg-blue-500'
+            : 'bg-gray-200'
+            }`}
           onPress={() => setSelectedRating(rating)}
         >
           {rating !== 'all' && (
-            <Ionicons 
-              name="star" 
-              size={12} 
-              color={selectedRating === rating ? 'white' : '#6B7280'} 
+            <Ionicons
+              name="star"
+              size={12}
+              color={selectedRating === rating ? 'white' : '#6B7280'}
             />
           )}
           <Text
-            className={`text-xs font-medium ml-1 ${
-              selectedRating === rating ? 'text-white' : 'text-gray-700'
-            }`}
+            className={`text-xs font-medium ml-1 ${selectedRating === rating ? 'text-white' : 'text-gray-700'
+              }`}
           >
             {rating === 'all' ? 'All' : `${rating}★`}
           </Text>
@@ -314,10 +329,13 @@ export const ReviewListComponent: React.FC<ReviewListProps> = ({
           className="bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900"
           placeholder="Search by location, description, or user..."
           value={searchQuery}
-          onChangeText={setSearchQuery}
+          onChangeText={handleSearchChange}
           autoCapitalize="none"
           autoCorrect={false}
         />
+        {searchError && (
+          <Text className="text-red-600 text-sm mt-1">{searchError}</Text>
+        )}
       </View>
 
       {/* Rating Filter */}

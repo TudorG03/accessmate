@@ -9,6 +9,7 @@ import { router } from "expo-router";
 import { Review } from "@/stores/review/review.store";
 import * as ImagePicker from 'expo-image-picker';
 import { ImageWithFallback } from "@/components/ImageWithFallback";
+import { validateReviewDescription, sanitizeInput } from '@/utils/validation.utils';
 
 export default function MyReviewsScreen() {
   const { userReviews, isLoading, error, fetchUserReviews, deleteReview } = useReview();
@@ -19,6 +20,7 @@ export default function MyReviewsScreen() {
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
   const [editingReview, setEditingReview] = useState<Review | null>(null);
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
+  const [descriptionError, setDescriptionError] = useState('');
 
   useEffect(() => {
     loadUserReviews();
@@ -412,7 +414,18 @@ export default function MyReviewsScreen() {
     }
 
     function handleReviewDescriptionChange(text: string) {
-      setReviewForm((prev) => ({ ...prev, description: text }));
+      // Sanitize input
+      const sanitizedText = sanitizeInput(text);
+
+      // Validate description
+      const validation = validateReviewDescription(sanitizedText);
+      if (!validation.isValid && sanitizedText.length > 0) {
+        setDescriptionError(validation.message || '');
+      } else {
+        setDescriptionError('');
+      }
+
+      setReviewForm((prev) => ({ ...prev, description: sanitizedText }));
     }
 
     async function handleSubmitReview() {
@@ -446,6 +459,16 @@ export default function MyReviewsScreen() {
           setReviewError('Please provide an overall accessibility rating');
           setReviewLoading(false);
           return;
+        }
+
+        // Validate description if provided
+        if (reviewForm.description) {
+          const descValidation = validateReviewDescription(reviewForm.description);
+          if (!descValidation.isValid) {
+            setReviewError(descValidation.message || 'Invalid description');
+            setReviewLoading(false);
+            return;
+          }
         }
 
         // Submit the updated review
@@ -656,7 +679,7 @@ export default function MyReviewsScreen() {
               {/* Description */}
               <View className="mb-8">
                 <Text className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-800'}`}>Tell us your thoughts</Text>
-                <View className={`rounded-xl border-2 ${isDark ? 'border-dark-border bg-dark-input' : 'border-gray-300 bg-white'}`} style={{
+                <View className={`rounded-xl border-2 ${descriptionError ? 'border-red-500' : isDark ? 'border-dark-border' : 'border-gray-300'} ${isDark ? 'bg-dark-input' : 'bg-white'}`} style={{
                   shadowColor: '#000',
                   shadowOffset: { width: 0, height: 1 },
                   shadowOpacity: 0.05,
@@ -667,11 +690,20 @@ export default function MyReviewsScreen() {
                     className={`p-4 min-h-[60px] text-base ${isDark ? 'text-white' : 'text-black'}`}
                     value={reviewForm.description}
                     onChangeText={handleReviewDescriptionChange}
-                    placeholder="Write here..."
+                    placeholder="Write here... (10-1000 characters)"
                     placeholderTextColor={isDark ? '#bbb' : '#888'}
                     multiline
+                    maxLength={1000}
                   />
                 </View>
+                {descriptionError && (
+                  <Text className="text-red-500 text-sm mt-2">{descriptionError}</Text>
+                )}
+                {reviewForm.description && (
+                  <Text className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                    {reviewForm.description.length}/1000 characters
+                  </Text>
+                )}
               </View>
 
               {/* Error */}

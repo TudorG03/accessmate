@@ -20,6 +20,7 @@ import { getObstacleEmoji } from '@/stores/marker/marker.utils';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/stores/theme/useTheme';
+import { validateMarkerDescription, sanitizeInput } from '@/utils/validation.utils';
 
 interface AddMarkerModalProps {
     visible: boolean;
@@ -40,6 +41,7 @@ const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose, editi
     const [localError, setLocalError] = useState<string | null>(null);
     const [submitAttempts, setSubmitAttempts] = useState<number>(0);
     const [showDebugInfo, setShowDebugInfo] = useState<boolean>(false);
+    const [descriptionError, setDescriptionError] = useState<string>('');
 
     // Clear error when visibility changes
     useEffect(() => {
@@ -76,6 +78,22 @@ const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose, editi
         setDescription('');
         setImages([]);
         setLocalError(null);
+        setDescriptionError('');
+    };
+
+    // Handle description change with validation
+    const handleDescriptionChange = (text: string) => {
+        const sanitizedText = sanitizeInput(text);
+
+        // Validate description
+        const validation = validateMarkerDescription(sanitizedText);
+        if (!validation.isValid && sanitizedText.length > 0) {
+            setDescriptionError(validation.message || '');
+        } else {
+            setDescriptionError('');
+        }
+
+        setDescription(sanitizedText);
     };
 
     // Handle form submission
@@ -89,6 +107,16 @@ const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose, editi
                 setLocalError('Please select an obstacle type.');
                 return;
             }
+
+            // Validate description if provided
+            if (description) {
+                const descValidation = validateMarkerDescription(description);
+                if (!descValidation.isValid) {
+                    setLocalError(descValidation.message || 'Invalid description');
+                    return;
+                }
+            }
+
             // For creation, location is set automatically, but check for editing
             if (isEditing && editingMarker && (!editingMarker.location || editingMarker.location.latitude == null || editingMarker.location.longitude == null)) {
                 setLocalError('Marker location is missing or invalid.');
@@ -371,14 +399,24 @@ const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose, editi
                         {/* Description */}
                         <Text className={`text-base font-medium mt-[10px] mb-[5px] ${isDark ? 'text-white' : 'text-black'}`}>Description (Optional)</Text>
                         <TextInput
-                            className={`border rounded-lg p-[10px] mb-[15px] min-h-[100px] text-top ${isDark ? 'border-dark-border bg-dark-input text-white' : 'border-gray-300 bg-white text-black'}`}
+                            className={`border rounded-lg p-[10px] min-h-[100px] text-top ${descriptionError ? 'border-red-500' : isDark ? 'border-dark-border' : 'border-gray-300'} ${isDark ? 'bg-dark-input text-white' : 'bg-white text-black'}`}
                             value={description}
-                            onChangeText={setDescription}
-                            placeholder="Describe the obstacle in detail..."
+                            onChangeText={handleDescriptionChange}
+                            placeholder="Describe the obstacle in detail... (max 500 characters)"
                             placeholderTextColor={isDark ? colors.secondaryText : '#888'}
                             multiline
                             numberOfLines={4}
+                            maxLength={500}
                         />
+                        {descriptionError && (
+                            <Text className="text-red-500 text-sm mb-2">{descriptionError}</Text>
+                        )}
+                        {description && (
+                            <Text className={`text-xs mb-[15px] ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                                {description.length}/500 characters
+                            </Text>
+                        )}
+                        {!description && <View className="mb-[15px]" />}
 
                         {/* Image Selection */}
                         <Text className={`text-base font-medium mt-[10px] mb-[5px] ${isDark ? 'text-white' : 'text-black'}`}>Images (Optional)</Text>

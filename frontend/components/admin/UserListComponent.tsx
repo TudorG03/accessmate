@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { AdminService } from '@/services/admin.service';
 import { User, UserRole } from '@/types/auth.types';
+import { validateSearchQuery, sanitizeInput } from '@/utils/validation.utils';
 
 interface UserListProps {
   onUserSelect?: (user: User) => void;
@@ -32,6 +33,7 @@ export const UserListComponent: React.FC<UserListProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole | 'all'>('all');
   const [error, setError] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState('');
 
   // Load users on mount and when refreshTrigger changes
   useEffect(() => {
@@ -62,11 +64,27 @@ export const UserListComponent: React.FC<UserListProps> = ({
     loadUsers();
   };
 
+  const handleSearchChange = (text: string) => {
+    const sanitizedText = sanitizeInput(text);
+
+    if (sanitizedText) {
+      const validation = validateSearchQuery(sanitizedText);
+      if (!validation.isValid) {
+        setSearchError(validation.message || '');
+        setSearchQuery(sanitizedText);
+        return;
+      }
+    }
+
+    setSearchError('');
+    setSearchQuery(sanitizedText);
+  };
+
   const filterUsers = () => {
     let filtered = users;
 
     // Filter by search query
-    if (searchQuery.trim()) {
+    if (searchQuery.trim() && !searchError) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(
         (user) =>
@@ -163,17 +181,15 @@ export const UserListComponent: React.FC<UserListProps> = ({
       {(['all', UserRole.ADMIN, UserRole.MODERATOR, UserRole.USER] as const).map((role) => (
         <TouchableOpacity
           key={role}
-          className={`mr-2 px-3 py-2 rounded-full ${
-            selectedRole === role
-              ? 'bg-blue-500'
-              : 'bg-gray-200'
-          }`}
+          className={`mr-2 px-3 py-2 rounded-full ${selectedRole === role
+            ? 'bg-blue-500'
+            : 'bg-gray-200'
+            }`}
           onPress={() => setSelectedRole(role)}
         >
           <Text
-            className={`text-xs font-medium ${
-              selectedRole === role ? 'text-white' : 'text-gray-700'
-            }`}
+            className={`text-xs font-medium ${selectedRole === role ? 'text-white' : 'text-gray-700'
+              }`}
           >
             {role === 'all' ? 'All' : role.charAt(0).toUpperCase() + role.slice(1)}
           </Text>
@@ -213,10 +229,13 @@ export const UserListComponent: React.FC<UserListProps> = ({
           className="bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900"
           placeholder="Search users by name or email..."
           value={searchQuery}
-          onChangeText={setSearchQuery}
+          onChangeText={handleSearchChange}
           autoCapitalize="none"
           autoCorrect={false}
         />
+        {searchError && (
+          <Text className="text-red-600 text-sm mt-1">{searchError}</Text>
+        )}
       </View>
 
       {/* Role Filter */}

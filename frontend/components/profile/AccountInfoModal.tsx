@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import useAuth from '@/stores/auth/hooks/useAuth';
 import { useTheme } from '@/stores/theme/useTheme';
+import { validatePassword, validateDisplayName, sanitizeInput } from '@/utils/validation.utils';
 
 interface AccountInfoModalProps {
     visible: boolean;
@@ -35,6 +36,11 @@ const AccountInfoModal: React.FC<AccountInfoModalProps> = ({ visible, onClose })
     const [localLoading, setLocalLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [showRetypePassword, setShowRetypePassword] = useState(false);
+    const [validationErrors, setValidationErrors] = useState({
+        displayName: '',
+        password: '',
+        retypePassword: '',
+    });
 
     // Update form data when user changes or modal opens
     useEffect(() => {
@@ -44,10 +50,53 @@ const AccountInfoModal: React.FC<AccountInfoModalProps> = ({ visible, onClose })
                 password: '',
                 retypePassword: '',
             });
+            setValidationErrors({
+                displayName: '',
+                password: '',
+                retypePassword: '',
+            });
             setIsEditing(false);
             clearError();
         }
     }, [visible, user]);
+
+    // Input validation handlers
+    const handleDisplayNameChange = (text: string) => {
+        const sanitizedText = sanitizeInput(text);
+        const validation = validateDisplayName(sanitizedText);
+
+        setFormData(prev => ({ ...prev, displayName: sanitizedText }));
+        setValidationErrors(prev => ({
+            ...prev,
+            displayName: validation.isValid ? '' : validation.message || ''
+        }));
+    };
+
+    const handlePasswordChange = (text: string) => {
+        const validation = validatePassword(text);
+
+        setFormData(prev => ({ ...prev, password: text }));
+        setValidationErrors(prev => ({
+            ...prev,
+            password: text && !validation.isValid ? validation.message || '' : ''
+        }));
+
+        // Re-validate retype password if it's already filled
+        if (formData.retypePassword) {
+            setValidationErrors(prev => ({
+                ...prev,
+                retypePassword: text !== formData.retypePassword ? 'Passwords do not match' : ''
+            }));
+        }
+    };
+
+    const handleRetypePasswordChange = (text: string) => {
+        setFormData(prev => ({ ...prev, retypePassword: text }));
+        setValidationErrors(prev => ({
+            ...prev,
+            retypePassword: text !== formData.password ? 'Passwords do not match' : ''
+        }));
+    };
 
     const handleSave = async () => {
         if (!user?.id) {
@@ -55,23 +104,34 @@ const AccountInfoModal: React.FC<AccountInfoModalProps> = ({ visible, onClose })
             return;
         }
 
-        // Validate input
-        if (!formData.displayName.trim()) {
-            Alert.alert('Validation Error', 'Display name is required');
-            return;
+        // Validate all fields
+        let hasErrors = false;
+        const errors = { displayName: '', password: '', retypePassword: '' };
+
+        // Validate display name
+        const displayNameValidation = validateDisplayName(formData.displayName);
+        if (!displayNameValidation.isValid) {
+            errors.displayName = displayNameValidation.message || '';
+            hasErrors = true;
         }
 
         // If password is provided, validate it
         if (formData.password) {
-            if (formData.password.length < 6) {
-                Alert.alert('Validation Error', 'Password must be at least 6 characters long');
-                return;
+            const passwordValidation = validatePassword(formData.password);
+            if (!passwordValidation.isValid) {
+                errors.password = passwordValidation.message || '';
+                hasErrors = true;
             }
 
             if (formData.password !== formData.retypePassword) {
-                Alert.alert('Validation Error', 'Passwords do not match');
-                return;
+                errors.retypePassword = 'Passwords do not match';
+                hasErrors = true;
             }
+        }
+
+        if (hasErrors) {
+            setValidationErrors(errors);
+            return;
         }
 
         try {
@@ -248,7 +308,7 @@ const AccountInfoModal: React.FC<AccountInfoModalProps> = ({ visible, onClose })
                                 >
                                     <TextInput
                                         value={formData.displayName}
-                                        onChangeText={(text) => setFormData(prev => ({ ...prev, displayName: text }))}
+                                        onChangeText={handleDisplayNameChange}
                                         placeholder="Enter your username"
                                         placeholderTextColor={colors.secondaryText}
                                         style={[styles.text, { fontSize: 16 }]}
@@ -256,6 +316,11 @@ const AccountInfoModal: React.FC<AccountInfoModalProps> = ({ visible, onClose })
                                         maxLength={50}
                                     />
                                 </View>
+                                {validationErrors.displayName && (
+                                    <Text className="text-xs mt-1" style={{ color: '#EF4444' }}>
+                                        {validationErrors.displayName}
+                                    </Text>
+                                )}
                             </View>
 
                             {/* Password Field - Only show when editing */}
@@ -273,7 +338,7 @@ const AccountInfoModal: React.FC<AccountInfoModalProps> = ({ visible, onClose })
                                     >
                                         <TextInput
                                             value={formData.password}
-                                            onChangeText={(text) => setFormData(prev => ({ ...prev, password: text }))}
+                                            onChangeText={handlePasswordChange}
                                             placeholder="Enter new password"
                                             placeholderTextColor={colors.secondaryText}
                                             style={[styles.text, { fontSize: 16, flex: 1 }]}
@@ -296,6 +361,11 @@ const AccountInfoModal: React.FC<AccountInfoModalProps> = ({ visible, onClose })
                                     <Text className="text-xs mt-1" style={{ color: colors.secondaryText }}>
                                         Leave empty to keep current password
                                     </Text>
+                                    {validationErrors.password && (
+                                        <Text className="text-xs mt-1" style={{ color: '#EF4444' }}>
+                                            {validationErrors.password}
+                                        </Text>
+                                    )}
                                 </View>
                             )}
 
@@ -314,7 +384,7 @@ const AccountInfoModal: React.FC<AccountInfoModalProps> = ({ visible, onClose })
                                     >
                                         <TextInput
                                             value={formData.retypePassword}
-                                            onChangeText={(text) => setFormData(prev => ({ ...prev, retypePassword: text }))}
+                                            onChangeText={handleRetypePasswordChange}
                                             placeholder="Retype new password"
                                             placeholderTextColor={colors.secondaryText}
                                             style={[styles.text, { fontSize: 16, flex: 1 }]}
@@ -334,9 +404,9 @@ const AccountInfoModal: React.FC<AccountInfoModalProps> = ({ visible, onClose })
                                             />
                                         </TouchableOpacity>
                                     </View>
-                                    {formData.password && formData.retypePassword && formData.password !== formData.retypePassword && (
+                                    {validationErrors.retypePassword && (
                                         <Text className="text-xs mt-1" style={{ color: '#EF4444' }}>
-                                            Passwords do not match
+                                            {validationErrors.retypePassword}
                                         </Text>
                                     )}
                                 </View>
@@ -382,7 +452,7 @@ const AccountInfoModal: React.FC<AccountInfoModalProps> = ({ visible, onClose })
                                 {/* Delete Account Button */}
                                 <TouchableOpacity
                                     className="py-4 rounded-lg flex-row justify-center items-center mb-4"
-                                    style={{ 
+                                    style={{
                                         backgroundColor: '#EF4444',
                                         opacity: isProcessing ? 0.7 : 1
                                     }}

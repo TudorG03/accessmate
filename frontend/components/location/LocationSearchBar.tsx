@@ -3,6 +3,7 @@ import { View, TextInput, TouchableOpacity, ActivityIndicator, FlatList, Text } 
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/stores/theme/useTheme';
 import { searchPlaces, getPlaceDetails, PlacePrediction } from '@/services/places.service';
+import { validateSearchQuery, sanitizeInput } from '@/utils/validation.utils';
 
 // Custom debounce function
 function debounce<T extends (...args: any[]) => any>(func: T, wait: number): (...args: Parameters<T>) => void {
@@ -33,6 +34,7 @@ export default function LocationSearchBar({
     const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [showPredictions, setShowPredictions] = useState(false);
+    const [searchError, setSearchError] = useState('');
 
     // Debounced search function to avoid too many API calls
     const debouncedSearch = useCallback(
@@ -59,8 +61,24 @@ export default function LocationSearchBar({
     );
 
     const handleTextChange = (text: string) => {
-        setQuery(text);
-        debouncedSearch(text);
+        // Sanitize input
+        const sanitizedText = sanitizeInput(text);
+
+        // Validate search query
+        if (sanitizedText) {
+            const validation = validateSearchQuery(sanitizedText);
+            if (!validation.isValid) {
+                setSearchError(validation.message || '');
+                setPredictions([]);
+                setShowPredictions(false);
+                setQuery(sanitizedText);
+                return;
+            }
+        }
+
+        setSearchError('');
+        setQuery(sanitizedText);
+        debouncedSearch(sanitizedText);
     };
 
     const handlePredictionSelect = async (prediction: PlacePrediction) => {
@@ -101,6 +119,7 @@ export default function LocationSearchBar({
         setQuery('');
         setPredictions([]);
         setShowPredictions(false);
+        setSearchError('');
     };
 
     const renderPrediction = ({ item }: { item: PlacePrediction }) => (
@@ -171,8 +190,17 @@ export default function LocationSearchBar({
                 )}
             </View>
 
+            {/* Error Display */}
+            {searchError && (
+                <View className={`mt-2 p-3 rounded-lg border ${isDark ? 'border-red-600 bg-red-900/20' : 'border-red-300 bg-red-50'}`}>
+                    <Text className={`text-sm text-center ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+                        {searchError}
+                    </Text>
+                </View>
+            )}
+
             {/* Predictions Dropdown */}
-            {showPredictions && (
+            {showPredictions && !searchError && (
                 <View className={`absolute top-full left-0 right-0 mt-1 rounded-xl border shadow-lg z-50 max-h-60 ${isDark ? 'border-gray-700 bg-gray-800' : 'border-gray-300 bg-white'
                     }`}>
                     {predictions.length > 0 ? (

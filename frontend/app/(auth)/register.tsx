@@ -14,6 +14,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../stores/theme/useTheme";
 import useAuth from "../../stores/auth/hooks/useAuth";
+import { validateEmail, validatePassword, validateDisplayName, validateUsername, sanitizeInput, sanitizeAndTrim } from '@/utils/validation.utils';
 
 export default function RegisterScreen() {
     const { isDark, setThemeMode } = useTheme();
@@ -25,8 +26,14 @@ export default function RegisterScreen() {
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [localError, setLocalError] = useState<string | null>(null);
+    const [validationErrors, setValidationErrors] = useState({
+        email: '',
+        password: '',
+        confirmPassword: '',
+        fullName: '',
+        username: '',
+    });
 
-    // Auto-clear errors after 5 seconds
     useEffect(() => {
         if (localError || error) {
             const timer = setTimeout(() => {
@@ -40,37 +47,122 @@ export default function RegisterScreen() {
 
     const handleRegister = async () => {
         try {
-            // Clear any previous errors
             clearError();
             setLocalError(null);
 
-            // Basic validation (add your own validation logic here)
-            if (!email.trim()) {
-                setLocalError("Email is required");
-                return;
+            let hasErrors = false;
+            const errors = { email: '', password: '', confirmPassword: '', fullName: '', username: '' };
+
+            const emailValidation = validateEmail(email);
+            if (!emailValidation.isValid) {
+                errors.email = emailValidation.message || '';
+                hasErrors = true;
             }
-            if (!password.trim()) {
-                setLocalError("Password is required");
-                return;
+
+            const passwordValidation = validatePassword(password);
+            if (!passwordValidation.isValid) {
+                errors.password = passwordValidation.message || '';
+                hasErrors = true;
             }
+
             if (!confirmPassword.trim()) {
-                setLocalError("Please confirm your password");
-                return;
+                errors.confirmPassword = "Please confirm your password";
+                hasErrors = true;
+            } else if (password !== confirmPassword) {
+                errors.confirmPassword = "Passwords do not match";
+                hasErrors = true;
             }
-            if (password !== confirmPassword) {
-                setLocalError("Passwords do not match");
-                return;
+
+            const fullNameValidation = validateDisplayName(fullName);
+            if (!fullNameValidation.isValid) {
+                errors.fullName = fullNameValidation.message || '';
+                hasErrors = true;
             }
-            if (!fullName.trim()) {
-                setLocalError("Full name is required");
+
+            const usernameValidation = validateUsername(username);
+            if (!usernameValidation.isValid) {
+                errors.username = usernameValidation.message || '';
+                hasErrors = true;
+            }
+
+            if (hasErrors) {
+                setValidationErrors(errors);
                 return;
             }
 
             await register(email, password, fullName);
-            // Navigation is handled in auth store
         } catch (err) {
             console.error("Registration error:", err);
             setLocalError(err instanceof Error ? err.message : "An unexpected error occurred");
+        }
+    };
+
+    const handleEmailChange = (text: string) => {
+        const sanitizedText = sanitizeInput(text);
+        setEmail(sanitizedText);
+
+        if (validationErrors.email) {
+            const validation = validateEmail(sanitizedText);
+            setValidationErrors(prev => ({
+                ...prev,
+                email: validation.isValid ? '' : validation.message || ''
+            }));
+        }
+    };
+
+    const handlePasswordChange = (text: string) => {
+        setPassword(text);
+
+        if (validationErrors.password) {
+            const validation = validatePassword(text);
+            setValidationErrors(prev => ({
+                ...prev,
+                password: validation.isValid ? '' : validation.message || ''
+            }));
+        }
+
+        if (confirmPassword && validationErrors.confirmPassword) {
+            setValidationErrors(prev => ({
+                ...prev,
+                confirmPassword: text !== confirmPassword ? 'Passwords do not match' : ''
+            }));
+        }
+    };
+
+    const handleConfirmPasswordChange = (text: string) => {
+        setConfirmPassword(text);
+
+        if (validationErrors.confirmPassword) {
+            setValidationErrors(prev => ({
+                ...prev,
+                confirmPassword: text !== password ? 'Passwords do not match' : ''
+            }));
+        }
+    };
+
+    const handleFullNameChange = (text: string) => {
+        const sanitizedText = sanitizeInput(text);
+        setFullName(sanitizedText);
+
+        if (validationErrors.fullName) {
+            const validation = validateDisplayName(sanitizedText);
+            setValidationErrors(prev => ({
+                ...prev,
+                fullName: validation.isValid ? '' : validation.message || ''
+            }));
+        }
+    };
+
+    const handleUsernameChange = (text: string) => {
+        const sanitizedText = sanitizeAndTrim(text);
+        setUsername(sanitizedText);
+
+        if (validationErrors.username) {
+            const validation = validateUsername(sanitizedText);
+            setValidationErrors(prev => ({
+                ...prev,
+                username: validation.isValid ? '' : validation.message || ''
+            }));
         }
     };
 
@@ -151,10 +243,17 @@ export default function RegisterScreen() {
                                     <TextInput
                                         placeholder="Pick a username"
                                         value={username}
-                                        onChangeText={setUsername}
+                                        onChangeText={handleUsernameChange}
                                         className={`py-3 px-4 rounded-xl border ${inputBgColor} ${textColor} ${borderColor}`}
                                         placeholderTextColor={isDark ? "#BBBBBB" : "#666666"}
+                                        autoCapitalize="none"
+                                        autoCorrect={false}
                                     />
+                                    {validationErrors.username && (
+                                        <Text className={`text-xs mt-1 ml-1 ${errorTextColor}`}>
+                                            {validationErrors.username}
+                                        </Text>
+                                    )}
                                 </View>
 
                                 <View className="mb-6">
@@ -165,10 +264,15 @@ export default function RegisterScreen() {
                                     <TextInput
                                         placeholder="Your full name"
                                         value={fullName}
-                                        onChangeText={setFullName}
+                                        onChangeText={handleFullNameChange}
                                         className={`py-3 px-4 rounded-xl border ${inputBgColor} ${textColor} ${borderColor}`}
                                         placeholderTextColor={isDark ? "#BBBBBB" : "#666666"}
                                     />
+                                    {validationErrors.fullName && (
+                                        <Text className={`text-xs mt-1 ml-1 ${errorTextColor}`}>
+                                            {validationErrors.fullName}
+                                        </Text>
+                                    )}
                                 </View>
 
                                 <View className="mb-6">
@@ -179,12 +283,17 @@ export default function RegisterScreen() {
                                     <TextInput
                                         placeholder="Your email address"
                                         value={email}
-                                        onChangeText={setEmail}
+                                        onChangeText={handleEmailChange}
                                         keyboardType="email-address"
                                         autoCapitalize="none"
                                         className={`py-3 px-4 rounded-xl border ${inputBgColor} ${textColor} ${borderColor}`}
                                         placeholderTextColor={isDark ? "#BBBBBB" : "#666666"}
                                     />
+                                    {validationErrors.email && (
+                                        <Text className={`text-xs mt-1 ml-1 ${errorTextColor}`}>
+                                            {validationErrors.email}
+                                        </Text>
+                                    )}
                                 </View>
 
                                 <View className="mb-6">
@@ -195,11 +304,16 @@ export default function RegisterScreen() {
                                     <TextInput
                                         placeholder="Create a password"
                                         value={password}
-                                        onChangeText={setPassword}
+                                        onChangeText={handlePasswordChange}
                                         secureTextEntry={true}
                                         className={`py-3 px-4 rounded-xl border ${inputBgColor} ${textColor} ${borderColor}`}
                                         placeholderTextColor={isDark ? "#BBBBBB" : "#666666"}
                                     />
+                                    {validationErrors.password && (
+                                        <Text className={`text-xs mt-1 ml-1 ${errorTextColor}`}>
+                                            {validationErrors.password}
+                                        </Text>
+                                    )}
                                 </View>
 
                                 <View>
@@ -210,11 +324,16 @@ export default function RegisterScreen() {
                                     <TextInput
                                         placeholder="Confirm your password"
                                         value={confirmPassword}
-                                        onChangeText={setConfirmPassword}
+                                        onChangeText={handleConfirmPasswordChange}
                                         secureTextEntry={true}
                                         className={`py-3 px-4 rounded-xl border ${inputBgColor} ${textColor} ${borderColor}`}
                                         placeholderTextColor={isDark ? "#BBBBBB" : "#666666"}
                                     />
+                                    {validationErrors.confirmPassword && (
+                                        <Text className={`text-xs mt-1 ml-1 ${errorTextColor}`}>
+                                            {validationErrors.confirmPassword}
+                                        </Text>
+                                    )}
                                 </View>
                             </View>
                         </View>

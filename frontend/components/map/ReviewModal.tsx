@@ -4,6 +4,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '@/stores/theme/useTheme';
 import * as ImagePicker from 'expo-image-picker';
 import { useReview } from '@/stores/review';
+import { validateReviewDescription, sanitizeInput } from '@/utils/validation.utils';
 
 interface ReviewFormState {
     accessibilityRating: number;
@@ -53,6 +54,7 @@ export default function ReviewModal({
     });
     const [reviewLoading, setReviewLoading] = useState(false);
     const [reviewError, setReviewError] = useState('');
+    const [descriptionError, setDescriptionError] = useState('');
 
     const { isDark } = useTheme();
     const {
@@ -152,7 +154,18 @@ export default function ReviewModal({
     }
 
     function handleReviewDescriptionChange(text: string) {
-        setReviewForm((prev) => ({ ...prev, description: text }));
+        // Sanitize input
+        const sanitizedText = sanitizeInput(text);
+
+        // Validate description
+        const validation = validateReviewDescription(sanitizedText);
+        if (!validation.isValid && sanitizedText.length > 0) {
+            setDescriptionError(validation.message || '');
+        } else {
+            setDescriptionError('');
+        }
+
+        setReviewForm((prev) => ({ ...prev, description: sanitizedText }));
     }
 
     async function handleSubmitReview() {
@@ -185,6 +198,16 @@ export default function ReviewModal({
                 setReviewError('Please provide an overall accessibility rating');
                 setReviewLoading(false);
                 return;
+            }
+
+            // Validate description if provided
+            if (reviewData.description) {
+                const descValidation = validateReviewDescription(reviewData.description);
+                if (!descValidation.isValid) {
+                    setReviewError(descValidation.message || 'Invalid description');
+                    setReviewLoading(false);
+                    return;
+                }
             }
 
             // Submit the review
@@ -383,7 +406,7 @@ export default function ReviewModal({
                         {/* Description */}
                         <View className="mb-8">
                             <Text className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-800'}`}>Tell us your thoughts</Text>
-                            <View className={`rounded-xl border-2 ${isDark ? 'border-dark-border bg-dark-input' : 'border-gray-300 bg-white'}`} style={{
+                            <View className={`rounded-xl border-2 ${descriptionError ? 'border-red-500' : isDark ? 'border-dark-border' : 'border-gray-300'} ${isDark ? 'bg-dark-input' : 'bg-white'}`} style={{
                                 shadowColor: '#000',
                                 shadowOffset: { width: 0, height: 1 },
                                 shadowOpacity: 0.05,
@@ -394,11 +417,20 @@ export default function ReviewModal({
                                     className={`p-4 min-h-[60px] text-base ${isDark ? 'text-white' : 'text-black'}`}
                                     value={reviewForm.description}
                                     onChangeText={handleReviewDescriptionChange}
-                                    placeholder="Write here..."
+                                    placeholder="Write here... (10-1000 characters)"
                                     placeholderTextColor={isDark ? '#bbb' : '#888'}
                                     multiline
+                                    maxLength={1000}
                                 />
                             </View>
+                            {descriptionError && (
+                                <Text className="text-red-500 text-sm mt-2">{descriptionError}</Text>
+                            )}
+                            {reviewForm.description && (
+                                <Text className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                                    {reviewForm.description.length}/1000 characters
+                                </Text>
+                            )}
                         </View>
                         {/* Error */}
                         {reviewError ? <Text className="text-red-500 mb-2">{reviewError}</Text> : null}

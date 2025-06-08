@@ -184,7 +184,131 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
                         </Pressable>
                     </View>
 
-                    {/* Location - Outside of main ScrollView to avoid nesting */}
+                    {/* Activity Types - moved to top */}
+                    <View className="mb-6">
+                        <Text className="text-lg font-bold mb-2" style={styles.text}>Activity Types</Text>
+
+                        {/* Selected types */}
+                        <View className="flex-row flex-wrap mb-2">
+                            {activityTypes.length > 0 && activityTypes.map((type) => (
+                                <Pressable
+                                    key={type.value}
+                                    className="mr-2 mb-2 px-3 py-2 rounded-full flex-row items-center"
+                                    style={{ backgroundColor: colors.primary }}
+                                    onPress={() => removePlaceType(type)}
+                                >
+                                    <Text style={{ color: 'white', marginRight: 5 }}>
+                                        {type.label}
+                                    </Text>
+                                    <Ionicons name="close-circle" size={16} color="white" />
+                                </Pressable>
+                            ))}
+                        </View>
+
+                        {/* Search input */}
+                        <View className="relative" style={{ zIndex: 1000 }}>
+                            <View style={{ position: 'relative' }}>
+                                <TextInput
+                                    style={[
+                                        styles.input,
+                                        {
+                                            color: colors.text,
+                                            borderColor: colors.border,
+                                            borderWidth: 1,
+                                            borderRadius: 8,
+                                            padding: 12,
+                                            paddingRight: 40
+                                        }
+                                    ]}
+                                    value={searchQuery}
+                                    onChangeText={(text) => {
+                                        setSearchQuery(text);
+                                        setShowDropdown(!!text);
+                                    }}
+                                    placeholder="Search for activity types..."
+                                    placeholderTextColor={colors.secondaryText}
+                                    onFocus={() => setShowDropdown(!!searchQuery)}
+                                />
+
+                                <View className="absolute right-3 top-3">
+                                    {loading ? (
+                                        <ActivityIndicator size="small" color={colors.primary} />
+                                    ) : (
+                                        <Ionicons
+                                            name="search"
+                                            size={20}
+                                            color={colors.secondaryText}
+                                        />
+                                    )}
+                                </View>
+                            </View>
+
+                            {/* Dropdown for suggestions */}
+                            {(showDropdown && filteredPlaceTypes.length > 0) && (
+                                <View
+                                    style={{
+                                        position: 'absolute',
+                                        top: '100%',
+                                        left: 0,
+                                        right: 0,
+                                        marginTop: 4,
+                                        maxHeight: 160,
+                                        backgroundColor: colors.surface,
+                                        borderColor: colors.border,
+                                        borderWidth: 1,
+                                        borderRadius: 8,
+                                        zIndex: 1001,
+                                        elevation: 15,
+                                        shadowColor: '#000',
+                                        shadowOffset: { width: 0, height: 4 },
+                                        shadowOpacity: 0.3,
+                                        shadowRadius: 5,
+                                    }}
+                                >
+                                    {filteredPlaceTypes.slice(0, 6).map((type) => (
+                                        <Pressable
+                                            key={type.value}
+                                            style={{
+                                                paddingHorizontal: 16,
+                                                paddingVertical: 12,
+                                                borderBottomWidth: 1,
+                                                borderBottomColor: colors.border
+                                            }}
+                                            onPress={() => togglePlaceType(type)}
+                                        >
+                                            <Text style={styles.text}>{type.label}</Text>
+                                        </Pressable>
+                                    ))}
+                                </View>
+                            )}
+
+                            {/* No results message */}
+                            {showDropdown && searchQuery && filteredPlaceTypes.length === 0 && placeTypes.length > 0 && (
+                                <View
+                                    style={{
+                                        position: 'absolute',
+                                        top: '100%',
+                                        left: 0,
+                                        right: 0,
+                                        marginTop: 4,
+                                        padding: 16,
+                                        backgroundColor: colors.surface,
+                                        borderColor: colors.border,
+                                        borderWidth: 1,
+                                        borderRadius: 8,
+                                        zIndex: 1001,
+                                        elevation: 15,
+                                    }}
+                                >
+                                    <Text style={[styles.secondaryText, { textAlign: 'center' }]}>
+                                        No matching activity types found
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                    </View>
+
+                    {/* Base Location - moved to second position */}
                     <View className="mb-6">
                         <Text className="text-lg font-bold mb-2" style={styles.text}>Base Location</Text>
                         <LocationSearchBar
@@ -199,130 +323,6 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
                     </View>
 
                     <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-                        {/* Activity Types */}
-                        <View className="mb-6">
-                            <Text className="text-lg font-bold mb-2" style={styles.text}>Activity Types</Text>
-
-                            {/* Selected types */}
-                            <View className="flex-row flex-wrap mb-2">
-                                {activityTypes.length > 0 && activityTypes.map((type) => (
-                                    <Pressable
-                                        key={type.value}
-                                        className="mr-2 mb-2 px-3 py-2 rounded-full flex-row items-center"
-                                        style={{ backgroundColor: colors.primary }}
-                                        onPress={() => removePlaceType(type)}
-                                    >
-                                        <Text style={{ color: 'white', marginRight: 5 }}>
-                                            {type.label}
-                                        </Text>
-                                        <Ionicons name="close-circle" size={16} color="white" />
-                                    </Pressable>
-                                ))}
-                            </View>
-
-                            {/* Search input */}
-                            <View className="relative" style={{ zIndex: 1000 }}>
-                                <View style={{ position: 'relative' }}>
-                                    <TextInput
-                                        style={[
-                                            styles.input,
-                                            {
-                                                color: colors.text,
-                                                borderColor: colors.border,
-                                                borderWidth: 1,
-                                                borderRadius: 8,
-                                                padding: 12,
-                                                paddingRight: 40
-                                            }
-                                        ]}
-                                        value={searchQuery}
-                                        onChangeText={(text) => {
-                                            setSearchQuery(text);
-                                            setShowDropdown(!!text);
-                                        }}
-                                        placeholder="Search for activity types..."
-                                        placeholderTextColor={colors.secondaryText}
-                                        onFocus={() => setShowDropdown(!!searchQuery)}
-                                    />
-
-                                    <View className="absolute right-3 top-3">
-                                        {loading ? (
-                                            <ActivityIndicator size="small" color={colors.primary} />
-                                        ) : (
-                                            <Ionicons
-                                                name="search"
-                                                size={20}
-                                                color={colors.secondaryText}
-                                            />
-                                        )}
-                                    </View>
-                                </View>
-
-                                {/* Dropdown for suggestions */}
-                                {(showDropdown && filteredPlaceTypes.length > 0) && (
-                                    <View
-                                        style={{
-                                            position: 'absolute',
-                                            top: '100%',
-                                            left: 0,
-                                            right: 0,
-                                            marginTop: 4,
-                                            maxHeight: 160,
-                                            backgroundColor: colors.surface,
-                                            borderColor: colors.border,
-                                            borderWidth: 1,
-                                            borderRadius: 8,
-                                            zIndex: 1001,
-                                            elevation: 15,
-                                            shadowColor: '#000',
-                                            shadowOffset: { width: 0, height: 4 },
-                                            shadowOpacity: 0.3,
-                                            shadowRadius: 5,
-                                        }}
-                                    >
-                                        {filteredPlaceTypes.slice(0, 6).map((type) => (
-                                            <Pressable
-                                                key={type.value}
-                                                style={{
-                                                    paddingHorizontal: 16,
-                                                    paddingVertical: 12,
-                                                    borderBottomWidth: 1,
-                                                    borderBottomColor: colors.border
-                                                }}
-                                                onPress={() => togglePlaceType(type)}
-                                            >
-                                                <Text style={styles.text}>{type.label}</Text>
-                                            </Pressable>
-                                        ))}
-                                    </View>
-                                )}
-
-                                {/* No results message */}
-                                {showDropdown && searchQuery && filteredPlaceTypes.length === 0 && placeTypes.length > 0 && (
-                                    <View
-                                        style={{
-                                            position: 'absolute',
-                                            top: '100%',
-                                            left: 0,
-                                            right: 0,
-                                            marginTop: 4,
-                                            padding: 16,
-                                            backgroundColor: colors.surface,
-                                            borderColor: colors.border,
-                                            borderWidth: 1,
-                                            borderRadius: 8,
-                                            zIndex: 1001,
-                                            elevation: 15,
-                                        }}
-                                    >
-                                        <Text style={[styles.secondaryText, { textAlign: 'center' }]}>
-                                            No matching activity types found
-                                        </Text>
-                                    </View>
-                                )}
-                            </View>
-                        </View>
-
                         {/* Transport Method */}
                         <View className="mb-6">
                             <Text className="text-lg font-bold mb-2" style={styles.text}>Transport Method</Text>

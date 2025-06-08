@@ -14,6 +14,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../stores/theme/useTheme";
 import useAuth from "../../stores/auth/hooks/useAuth";
+import { validateEmail, sanitizeInput } from '@/utils/validation.utils';
 
 export default function LoginScreen() {
     const { isDark, setThemeMode } = useTheme();
@@ -22,6 +23,10 @@ export default function LoginScreen() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [localError, setLocalError] = useState<string | null>(null);
+    const [validationErrors, setValidationErrors] = useState({
+        email: '',
+        password: '',
+    });
 
     // Auto-clear errors after 5 seconds
     useEffect(() => {
@@ -41,13 +46,25 @@ export default function LoginScreen() {
             clearError();
             setLocalError(null);
 
-            // Basic validation
-            if (!email.trim()) {
-                setLocalError("Email is required");
-                return;
+            // Validation
+            let hasErrors = false;
+            const errors = { email: '', password: '' };
+
+            // Email validation
+            const emailValidation = validateEmail(email);
+            if (!emailValidation.isValid) {
+                errors.email = emailValidation.message || '';
+                hasErrors = true;
             }
+
+            // Password validation (just check if provided for login)
             if (!password.trim()) {
-                setLocalError("Password is required");
+                errors.password = "Password is required";
+                hasErrors = true;
+            }
+
+            if (hasErrors) {
+                setValidationErrors(errors);
                 return;
             }
 
@@ -55,6 +72,31 @@ export default function LoginScreen() {
         } catch (err) {
             console.error("Login error:", err);
             setLocalError(err instanceof Error ? err.message : "An unexpected error occurred");
+        }
+    };
+
+    // Input handlers with validation
+    const handleEmailChange = (text: string) => {
+        const sanitizedText = sanitizeInput(text);
+        setEmail(sanitizedText);
+
+        if (validationErrors.email) {
+            const validation = validateEmail(sanitizedText);
+            setValidationErrors(prev => ({
+                ...prev,
+                email: validation.isValid ? '' : validation.message || ''
+            }));
+        }
+    };
+
+    const handlePasswordChange = (text: string) => {
+        setPassword(text);
+
+        if (validationErrors.password) {
+            setValidationErrors(prev => ({
+                ...prev,
+                password: text.trim() ? '' : 'Password is required'
+            }));
         }
     };
 
@@ -132,12 +174,17 @@ export default function LoginScreen() {
                                     <TextInput
                                         placeholder="Your email address"
                                         value={email}
-                                        onChangeText={setEmail}
+                                        onChangeText={handleEmailChange}
                                         keyboardType="email-address"
                                         autoCapitalize="none"
                                         className={`py-3 px-4 rounded-xl border ${inputBgColor} ${textColor} ${borderColor}`}
                                         placeholderTextColor={isDark ? "#BBBBBB" : "#666666"}
                                     />
+                                    {validationErrors.email && (
+                                        <Text className={`text-xs mt-1 ml-1 ${errorTextColor}`}>
+                                            {validationErrors.email}
+                                        </Text>
+                                    )}
                                 </View>
 
                                 <View className="mb-6">
@@ -148,11 +195,16 @@ export default function LoginScreen() {
                                     <TextInput
                                         placeholder="Enter your password"
                                         value={password}
-                                        onChangeText={setPassword}
+                                        onChangeText={handlePasswordChange}
                                         secureTextEntry={true}
                                         className={`py-3 px-4 rounded-xl border ${inputBgColor} ${textColor} ${borderColor}`}
                                         placeholderTextColor={isDark ? "#BBBBBB" : "#666666"}
                                     />
+                                    {validationErrors.password && (
+                                        <Text className={`text-xs mt-1 ml-1 ${errorTextColor}`}>
+                                            {validationErrors.password}
+                                        </Text>
+                                    )}
                                 </View>
                             </View>
                         </View>

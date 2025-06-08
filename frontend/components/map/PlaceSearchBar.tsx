@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/stores/theme/useTheme';
 import { searchPlaces, getPlaceDetails, PlacePrediction } from '@/services/places.service';
 import { debounce } from 'lodash';
+import { validateSearchQuery, sanitizeInput } from '@/utils/validation.utils';
 
 interface PlaceSearchBarProps {
     onPlaceSelected: (place: { id: string, name: string, address: string }) => void;
@@ -11,14 +12,15 @@ interface PlaceSearchBarProps {
     onPlaceInfoRequested: (placeId: string) => void;
 }
 
-export default function PlaceSearchBar({ 
-    onPlaceSelected, 
-    onLocationSelected, 
-    onPlaceInfoRequested 
+export default function PlaceSearchBar({
+    onPlaceSelected,
+    onLocationSelected,
+    onPlaceInfoRequested
 }: PlaceSearchBarProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [searchError, setSearchError] = useState('');
     const { isDark, colors } = useTheme();
 
     // Debounced search function to avoid too many API calls
@@ -44,9 +46,24 @@ export default function PlaceSearchBar({
 
     // Function to search for places
     const handleSearchInput = (text: string) => {
-        setSearchQuery(text);
+        // Sanitize input
+        const sanitizedText = sanitizeInput(text);
+
+        // Validate search query
+        if (sanitizedText) {
+            const validation = validateSearchQuery(sanitizedText);
+            if (!validation.isValid) {
+                setSearchError(validation.message || '');
+                setPredictions([]);
+                setSearchQuery(sanitizedText);
+                return;
+            }
+        }
+
+        setSearchError('');
+        setSearchQuery(sanitizedText);
         setIsLoading(true);
-        debouncedSearch(text);
+        debouncedSearch(sanitizedText);
     };
 
     // Function to get place details and coordinates
@@ -116,6 +133,7 @@ export default function PlaceSearchBar({
                         onPress={() => {
                             setSearchQuery('');
                             setPredictions([]);
+                            setSearchError('');
                         }}
                         style={styles.clearButton}
                     >
@@ -124,7 +142,13 @@ export default function PlaceSearchBar({
                 ) : null}
             </View>
 
-            {predictions.length > 0 && (
+            {searchError && (
+                <View style={[styles.errorContainer, { backgroundColor }]}>
+                    <Text style={styles.errorText}>{searchError}</Text>
+                </View>
+            )}
+
+            {predictions.length > 0 && !searchError && (
                 <FlatList
                     data={predictions}
                     keyExtractor={(item) => item.place_id}
@@ -145,7 +169,7 @@ export default function PlaceSearchBar({
                                     </Text>
                                 </View>
                             </TouchableOpacity>
-                            
+
                             <TouchableOpacity
                                 style={styles.infoButton}
                                 onPress={() => handleInfoPress(item.place_id)}
@@ -235,5 +259,18 @@ const styles = StyleSheet.create({
     infoButton: {
         padding: 8,
         marginLeft: 8,
+    },
+    errorContainer: {
+        marginTop: 5,
+        padding: 12,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#ef4444',
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    },
+    errorText: {
+        color: '#ef4444',
+        fontSize: 14,
+        textAlign: 'center',
     },
 }); 

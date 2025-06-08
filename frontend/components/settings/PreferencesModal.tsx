@@ -7,6 +7,7 @@ import { PlaceType, Budget, DistanceUnit, TransportMethod, UserPreferences } fro
 import useAuth from "@/stores/auth/hooks/useAuth";
 import api from "@/services/api.service";
 import LocationSearchBar from "@/components/location/LocationSearchBar";
+import { validateSearchRadius, validateNumericInput, sanitizeInput } from '@/utils/validation.utils';
 
 interface PreferencesModalProps {
     visible: boolean;
@@ -36,6 +37,7 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
     const [loading, setLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [showDropdown, setShowDropdown] = useState(false);
+    const [searchRadiusError, setSearchRadiusError] = useState('');
 
     // Fetch place types from API
     useEffect(() => {
@@ -90,6 +92,13 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
     };
 
     const savePreferences = async () => {
+        // Validate search radius before saving
+        const radiusValidation = validateSearchRadius(searchRadius);
+        if (!radiusValidation.isValid) {
+            setSearchRadiusError(radiusValidation.message || '');
+            return;
+        }
+
         try {
             const updatedPreferences: UserPreferences = {
                 activityTypes,
@@ -137,6 +146,21 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
     // Remove a selected place type
     const removePlaceType = (type: PlaceType) => {
         setActivityTypes(activityTypes.filter(t => t.value !== type.value));
+    };
+
+    // Handle search radius change with validation
+    const handleSearchRadiusChange = (text: string) => {
+        const sanitizedText = sanitizeInput(text);
+        const numericValue = parseInt(sanitizedText) || 0;
+
+        const validation = validateSearchRadius(numericValue);
+        if (!validation.isValid && sanitizedText !== '') {
+            setSearchRadiusError(validation.message || '');
+        } else {
+            setSearchRadiusError('');
+        }
+
+        setSearchRadius(numericValue);
     };
 
     return (
@@ -318,10 +342,15 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
                                 style={[styles.input, { color: colors.text, borderColor: colors.border, borderWidth: 1, borderRadius: 8, padding: 12 }]}
                                 keyboardType="numeric"
                                 value={searchRadius.toString()}
-                                onChangeText={(text) => setSearchRadius(parseInt(text) || 0)}
+                                onChangeText={handleSearchRadiusChange}
                                 placeholder="Search Radius in km"
                                 placeholderTextColor={colors.secondaryText}
                             />
+                            {searchRadiusError && (
+                                <Text style={{ color: '#EF4444', fontSize: 12, marginTop: 4 }}>
+                                    {searchRadiusError}
+                                </Text>
+                            )}
                         </View>
 
                         {/* Accessibility Requirements */}

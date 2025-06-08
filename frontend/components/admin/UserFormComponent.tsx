@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { AdminService, CreateUserRequest, UpdateUserRequest } from '@/services/admin.service';
 import { User, UserRole } from '@/types/auth.types';
+import { validateEmail, validatePassword, validateDisplayName, sanitizeInput } from '@/utils/validation.utils';
 
 interface UserFormProps {
   user?: User | null; // If provided, this is edit mode
@@ -24,7 +25,7 @@ export const UserFormComponent: React.FC<UserFormProps> = ({
   onCancel,
 }) => {
   const isEditMode = !!user;
-  
+
   const [formData, setFormData] = useState({
     email: user?.email || '',
     password: '',
@@ -32,7 +33,7 @@ export const UserFormComponent: React.FC<UserFormProps> = ({
     role: user?.role || UserRole.USER,
     isActive: user?.isActive ?? true,
   });
-  
+
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -53,24 +54,25 @@ export const UserFormComponent: React.FC<UserFormProps> = ({
     const newErrors: Record<string, string> = {};
 
     // Email validation
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address';
+    const emailValidation = validateEmail(formData.email);
+    if (!emailValidation.isValid) {
+      newErrors.email = emailValidation.message || '';
     }
 
     // Password validation (required for create, optional for edit)
     if (!isEditMode && !formData.password) {
       newErrors.password = 'Password is required';
-    } else if (formData.password && formData.password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters long';
+    } else if (formData.password) {
+      const passwordValidation = validatePassword(formData.password);
+      if (!passwordValidation.isValid) {
+        newErrors.password = passwordValidation.message || '';
+      }
     }
 
     // Display name validation
-    if (!formData.displayName.trim()) {
-      newErrors.displayName = 'Display name is required';
-    } else if (formData.displayName.length < 2) {
-      newErrors.displayName = 'Display name must be at least 2 characters long';
+    const displayNameValidation = validateDisplayName(formData.displayName);
+    if (!displayNameValidation.isValid) {
+      newErrors.displayName = displayNameValidation.message || '';
     }
 
     setErrors(newErrors);
@@ -85,7 +87,7 @@ export const UserFormComponent: React.FC<UserFormProps> = ({
     setLoading(true);
     try {
       let response;
-      
+
       if (isEditMode && user) {
         // Update existing user
         const updateData: UpdateUserRequest = {
@@ -94,12 +96,12 @@ export const UserFormComponent: React.FC<UserFormProps> = ({
           role: formData.role,
           isActive: formData.isActive,
         };
-        
+
         // Only include password if it's provided
         if (formData.password) {
           updateData.password = formData.password;
         }
-        
+
         response = await AdminService.updateUser(user.id, updateData);
       } else {
         // Create new user
@@ -109,7 +111,7 @@ export const UserFormComponent: React.FC<UserFormProps> = ({
           displayName: formData.displayName,
           role: formData.role,
         };
-        
+
         response = await AdminService.createUser(createData);
       }
 
@@ -129,7 +131,9 @@ export const UserFormComponent: React.FC<UserFormProps> = ({
   };
 
   const updateFormData = (field: string, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    // Sanitize text inputs
+    const sanitizedValue = typeof value === 'string' ? sanitizeInput(value) : value;
+    setFormData(prev => ({ ...prev, [field]: sanitizedValue }));
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
@@ -143,17 +147,15 @@ export const UserFormComponent: React.FC<UserFormProps> = ({
         {Object.values(UserRole).map((role) => (
           <TouchableOpacity
             key={role}
-            className={`mr-2 mb-2 px-4 py-2 rounded-full border ${
-              formData.role === role
-                ? 'bg-blue-500 border-blue-500'
-                : 'bg-white border-gray-300'
-            }`}
+            className={`mr-2 mb-2 px-4 py-2 rounded-full border ${formData.role === role
+              ? 'bg-blue-500 border-blue-500'
+              : 'bg-white border-gray-300'
+              }`}
             onPress={() => updateFormData('role', role)}
           >
             <Text
-              className={`text-sm font-medium ${
-                formData.role === role ? 'text-white' : 'text-gray-700'
-              }`}
+              className={`text-sm font-medium ${formData.role === role ? 'text-white' : 'text-gray-700'
+                }`}
             >
               {role.charAt(0).toUpperCase() + role.slice(1)}
             </Text>
@@ -177,9 +179,8 @@ export const UserFormComponent: React.FC<UserFormProps> = ({
               Email *
             </Text>
             <TextInput
-              className={`border rounded-lg px-4 py-3 text-gray-900 ${
-                errors.email ? 'border-red-500' : 'border-gray-300'
-              }`}
+              className={`border rounded-lg px-4 py-3 text-gray-900 ${errors.email ? 'border-red-500' : 'border-gray-300'
+                }`}
               placeholder="Enter email address"
               value={formData.email}
               onChangeText={(value) => updateFormData('email', value)}
@@ -199,9 +200,8 @@ export const UserFormComponent: React.FC<UserFormProps> = ({
               Display Name *
             </Text>
             <TextInput
-              className={`border rounded-lg px-4 py-3 text-gray-900 ${
-                errors.displayName ? 'border-red-500' : 'border-gray-300'
-              }`}
+              className={`border rounded-lg px-4 py-3 text-gray-900 ${errors.displayName ? 'border-red-500' : 'border-gray-300'
+                }`}
               placeholder="Enter display name"
               value={formData.displayName}
               onChangeText={(value) => updateFormData('displayName', value)}
@@ -218,9 +218,8 @@ export const UserFormComponent: React.FC<UserFormProps> = ({
               Password {isEditMode ? '(leave blank to keep current)' : '*'}
             </Text>
             <TextInput
-              className={`border rounded-lg px-4 py-3 text-gray-900 ${
-                errors.password ? 'border-red-500' : 'border-gray-300'
-              }`}
+              className={`border rounded-lg px-4 py-3 text-gray-900 ${errors.password ? 'border-red-500' : 'border-gray-300'
+                }`}
               placeholder={isEditMode ? 'Enter new password' : 'Enter password'}
               value={formData.password}
               onChangeText={(value) => updateFormData('password', value)}
@@ -263,11 +262,10 @@ export const UserFormComponent: React.FC<UserFormProps> = ({
             >
               <Text className="text-white text-center font-medium">Cancel</Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity
-              className={`flex-1 py-3 rounded-lg ${
-                loading ? 'bg-gray-400' : 'bg-blue-500'
-              }`}
+              className={`flex-1 py-3 rounded-lg ${loading ? 'bg-gray-400' : 'bg-blue-500'
+                }`}
               onPress={handleSubmit}
               disabled={loading}
             >
