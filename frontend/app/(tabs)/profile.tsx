@@ -6,9 +6,8 @@ import { useTheme } from "../../stores/theme/useTheme";
 import useAuth from "../../stores/auth/hooks/useAuth";
 import { ThemeToggle } from "../../components/ThemeToggle";
 import { UnitPreferenceSelector } from "../../components/UnitPreferenceSelector";
-import PreferencesModal from "../../components/settings/PreferencesModal";
 import TopActivityTypes from "../../components/settings/TopActivityTypes";
-import { ProfilePictureUpload, AccountInfoModal } from "../../components/profile";
+import { ProfilePictureUpload, AccountInfoModal, PreferencesModal } from "../../components/profile";
 import { useLocalSearchParams, router } from "expo-router";
 
 export default function ProfileScreen() {

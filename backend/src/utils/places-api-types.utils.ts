@@ -22,9 +22,12 @@ interface PlaceTypeRecord {
  */
 export async function loadPlaceTypes(): Promise<string[]> {
   try {
-    return await readJSON(TYPES_FILE_PATH);
+    console.log("📁 Loading place types from:", TYPES_FILE_PATH);
+    const types = await readJSON<string[]>(TYPES_FILE_PATH);
+    console.log("📁 Loaded types count:", types?.length || 0);
+    return types || [];
   } catch (error) {
-    console.error("Error loading place types:", error);
+    console.error("❌ Error loading place types:", error);
     return [];
   }
 }
