@@ -4,6 +4,8 @@ import { join } from "https://deno.land/std/path/mod.ts";
 // Path to the JSON file containing supported place types
 const TYPES_FILE_PATH = join(
   Deno.cwd(),
+  "backend",
+  "src",
   "models",
   "activity",
   "google_places_supported_types.json",
