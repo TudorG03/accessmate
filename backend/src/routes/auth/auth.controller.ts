@@ -7,7 +7,6 @@ import User, {
   TransportMethod,
   UserRole,
 } from "../../models/auth/auth.mongo.ts";
-import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -19,6 +18,23 @@ const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
 
 // Email validation regex
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+// Web Crypto API-based password hashing for Deno Deploy compatibility
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function comparePassword(
+  password: string,
+  hashedPassword: string,
+): Promise<boolean> {
+  const hashedInput = await hashPassword(password);
+  return hashedInput === hashedPassword;
+}
 
 // Function to validate password
 function validatePassword(
@@ -251,12 +267,9 @@ export const register = async (ctx: Context) => {
       return;
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(body.password, salt);
-
     const user = new User({
       email: body.email,
-      password: hashedPassword,
+      password: await hashPassword(body.password),
       displayName: body.displayName,
       preferences: {
         activityTypes: body.preferences?.activityTypes || [],
@@ -345,7 +358,7 @@ export const login = async (ctx: Context) => {
       return;
     }
 
-    const isMatch = await bcrypt.compare(body.password, user.password);
+    const isMatch = await comparePassword(body.password, user.password);
     if (!isMatch) {
       console.log(`Login failed: Invalid password for email: ${body.email}`);
       ctx.response.status = 401;
@@ -357,7 +370,9 @@ export const login = async (ctx: Context) => {
     if (!user.isActive) {
       console.log(`Login failed: Account is disabled for email: ${body.email}`);
       ctx.response.status = 401;
-      ctx.response.body = { message: "Account is disabled. Please contact an administrator." };
+      ctx.response.body = {
+        message: "Account is disabled. Please contact an administrator.",
+      };
       return;
     }
 
@@ -486,8 +501,7 @@ export const updateUser = async (ctx: RouterContext<"/update/:id">) => {
         return;
       }
 
-      const salt = await bcrypt.genSalt(10);
-      user.password = await bcrypt.hash(body.password, salt);
+      user.password = await hashPassword(body.password);
     }
 
     // Update preferences if provided
@@ -635,7 +649,9 @@ export const getUserById = async (ctx: RouterContext<"/user/:id">) => {
 /**
  * Upload/Update profile picture for a user
  */
-export const uploadProfilePicture = async (ctx: RouterContext<"/profile-picture/:id">) => {
+export const uploadProfilePicture = async (
+  ctx: RouterContext<"/profile-picture/:id">,
+) => {
   try {
     const userId = ctx.params.id;
     const body = await ctx.request.body.json() as ProfilePictureRequest;
@@ -644,11 +660,13 @@ export const uploadProfilePicture = async (ctx: RouterContext<"/profile-picture/
     // Only allow users to update their own profile picture unless they're admin/moderator
     if (
       authUser.role !== UserRole.ADMIN &&
-      authUser.role !== UserRole.MODERATOR && 
+      authUser.role !== UserRole.MODERATOR &&
       authUser.userId !== userId
     ) {
       ctx.response.status = 403;
-      ctx.response.body = { message: "Unauthorized to update this user's profile picture" };
+      ctx.response.body = {
+        message: "Unauthorized to update this user's profile picture",
+      };
       return;
     }
 
@@ -659,9 +677,14 @@ export const uploadProfilePicture = async (ctx: RouterContext<"/profile-picture/
     }
 
     // Validate that it's a base64 data URL for images
-    if (!body.profilePicture.startsWith("data:image/") || !body.profilePicture.includes("base64,")) {
+    if (
+      !body.profilePicture.startsWith("data:image/") ||
+      !body.profilePicture.includes("base64,")
+    ) {
       ctx.response.status = 400;
-      ctx.response.body = { message: "Profile picture must be a valid base64 image data URL" };
+      ctx.response.body = {
+        message: "Profile picture must be a valid base64 image data URL",
+      };
       return;
     }
 
@@ -670,7 +693,10 @@ export const uploadProfilePicture = async (ctx: RouterContext<"/profile-picture/
     // Let's limit to ~4MB base64 string (≈3MB original image)
     if (body.profilePicture.length > 4 * 1024 * 1024) {
       ctx.response.status = 400;
-      ctx.response.body = { message: "Profile picture is too large. Please use an image smaller than 3MB" };
+      ctx.response.body = {
+        message:
+          "Profile picture is too large. Please use an image smaller than 3MB",
+      };
       return;
     }
 
@@ -708,7 +734,9 @@ export const uploadProfilePicture = async (ctx: RouterContext<"/profile-picture/
 /**
  * Delete profile picture for a user
  */
-export const deleteProfilePicture = async (ctx: RouterContext<"/profile-picture/:id">) => {
+export const deleteProfilePicture = async (
+  ctx: RouterContext<"/profile-picture/:id">,
+) => {
   try {
     const userId = ctx.params.id;
     const authUser = ctx.state.user;
@@ -716,11 +744,13 @@ export const deleteProfilePicture = async (ctx: RouterContext<"/profile-picture/
     // Only allow users to delete their own profile picture unless they're admin/moderator
     if (
       authUser.role !== UserRole.ADMIN &&
-      authUser.role !== UserRole.MODERATOR && 
+      authUser.role !== UserRole.MODERATOR &&
       authUser.userId !== userId
     ) {
       ctx.response.status = 403;
-      ctx.response.body = { message: "Unauthorized to delete this user's profile picture" };
+      ctx.response.body = {
+        message: "Unauthorized to delete this user's profile picture",
+      };
       return;
     }
 
