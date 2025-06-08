@@ -8,7 +8,8 @@ export const getApiHost = () => {
 };
 
 export const getApiPort = () => process.env.BACKEND_PORT || "3000";
-export const API_URL = `${getApiHost()}${getApiPort()}`;
+// export const API_URL = `${getApiHost()}${getApiPort()}`;
+export const API_URL = `${getApiHost()}`;
 
 // Log the API URL for debugging
 console.log("🔗 API Configuration:", {

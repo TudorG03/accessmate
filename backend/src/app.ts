@@ -14,11 +14,7 @@ const app = new Application();
 // CORS middleware
 app.use(oakCors({
   origin: [
-    "http://localhost:3000",
-    "http://localhost:8081",
-    "http://127.0.0.1:8081",
-    "https://accessmate.app",
-    "exp://localhost:8081",
+    "*",
   ],
   credentials: true,
   allowedHeaders: ["Content-Type", "Authorization"],
