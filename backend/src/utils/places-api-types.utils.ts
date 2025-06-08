@@ -4,7 +4,6 @@ import { join } from "https://deno.land/std/path/mod.ts";
 // Path to the JSON file containing supported place types
 const TYPES_FILE_PATH = join(
   Deno.cwd(),
-  "src",
   "models",
   "activity",
   "google_places_supported_types.json",
@@ -22,9 +21,7 @@ interface PlaceTypeRecord {
  */
 export async function loadPlaceTypes(): Promise<string[]> {
   try {
-    console.log("📁 Loading place types from:", TYPES_FILE_PATH);
     const types = await readJSON<string[]>(TYPES_FILE_PATH);
-    console.log("📁 Loaded types count:", types?.length || 0);
     return types || [];
   } catch (error) {
     console.error("❌ Error loading place types:", error);

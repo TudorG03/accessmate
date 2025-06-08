@@ -42,24 +42,17 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
         const fetchPlaceTypes = async () => {
             setLoading(true);
             try {
-                console.log('🌐 Fetching place types from API...');
                 const response = await api.get('/api/type');
-                console.log('🌐 API Response:', response);
-                console.log('🌐 Response Data:', response.data);
 
                 if (response.data && response.data.success) {
-                    console.log('✅ Place types loaded:', response.data.types?.length || 0);
                     setPlaceTypes(response.data.types || []);
                 } else if (response.data && response.data.types) {
                     // Handle different response structure
-                    console.log('✅ Place types loaded (alt structure):', response.data.types?.length || 0);
                     setPlaceTypes(response.data.types || []);
                 } else if (response.data && Array.isArray(response.data)) {
                     // Handle direct array response
-                    console.log('✅ Place types loaded (direct array):', response.data.length || 0);
                     setPlaceTypes(response.data);
                 } else {
-                    console.warn('⚠️ Unexpected API response structure:', response.data);
                     // Fallback: create some test data
                     const fallbackTypes = [
                         { value: 'restaurant', label: 'Restaurant' },
@@ -69,16 +62,10 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
                         { value: 'library', label: 'Library' },
                         { value: 'gym', label: 'Gym' },
                     ];
-                    console.log('🔄 Using fallback data:', fallbackTypes.length);
                     setPlaceTypes(fallbackTypes);
                 }
             } catch (error: any) {
-                console.error('❌ Error fetching place types:', error);
-                console.error('❌ Error details:', {
-                    message: error instanceof Error ? error.message : 'Unknown error',
-                    status: error?.response?.status,
-                    data: error?.response?.data
-                });
+                console.error('Error fetching place types:', error);
 
                 // Fallback: create some test data
                 const fallbackTypes = [
@@ -89,7 +76,6 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
                     { value: 'library', label: 'Library' },
                     { value: 'gym', label: 'Gym' },
                 ];
-                console.log('🔄 Using fallback data due to error:', fallbackTypes.length);
                 setPlaceTypes(fallbackTypes);
             } finally {
                 setLoading(false);
@@ -251,8 +237,6 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
                                         ]}
                                         value={searchQuery}
                                         onChangeText={(text) => {
-                                            console.log('🔍 Search changed:', text);
-                                            console.log('🔍 Available types:', placeTypes.length);
                                             setSearchQuery(text);
                                             setShowDropdown(!!text);
                                         }}
@@ -273,39 +257,6 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
                                         )}
                                     </View>
                                 </View>
-
-                                {/* Debug info */}
-                                {__DEV__ && (
-                                    <View style={{ marginTop: 4, padding: 8, backgroundColor: 'rgba(255,0,0,0.1)' }}>
-                                        <Text style={{ fontSize: 10, color: 'red' }}>
-                                            Debug: show={showDropdown.toString()}, query="{searchQuery}", filtered={filteredPlaceTypes.length}, total={placeTypes.length}
-                                        </Text>
-                                        <Text style={{ fontSize: 10, color: 'blue' }}>
-                                            Loading: {loading.toString()}, Visible: {visible.toString()}
-                                        </Text>
-                                        {placeTypes.length > 0 && (
-                                            <Text style={{ fontSize: 10, color: 'green' }}>
-                                                Sample types: {placeTypes.slice(0, 3).map(t => t.label).join(', ')}
-                                            </Text>
-                                        )}
-                                    </View>
-                                )}
-
-                                {/* Force show dropdown for testing - REMOVE AFTER DEBUGGING */}
-                                {__DEV__ && searchQuery && placeTypes.length > 0 && (
-                                    <View
-                                        style={{
-                                            marginTop: 4,
-                                            backgroundColor: 'yellow',
-                                            padding: 8,
-                                            borderRadius: 4,
-                                        }}
-                                    >
-                                        <Text style={{ fontSize: 12, color: 'black' }}>
-                                            FORCE TEST - Total types: {placeTypes.length}, Should show: {filteredPlaceTypes.length}
-                                        </Text>
-                                    </View>
-                                )}
 
                                 {/* Dropdown for suggestions */}
                                 {(showDropdown && filteredPlaceTypes.length > 0) && (
@@ -338,10 +289,7 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
                                                     borderBottomWidth: 1,
                                                     borderBottomColor: colors.border
                                                 }}
-                                                onPress={() => {
-                                                    console.log('🏷️ Selected:', type.label);
-                                                    togglePlaceType(type);
-                                                }}
+                                                onPress={() => togglePlaceType(type)}
                                             >
                                                 <Text style={styles.text}>{type.label}</Text>
                                             </Pressable>
@@ -349,43 +297,27 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
                                     </View>
                                 )}
 
-                                {/* TEST: Always show first 3 types when searching - REMOVE AFTER DEBUGGING */}
-                                {__DEV__ && searchQuery && placeTypes.length > 0 && (
+                                {/* No results message */}
+                                {showDropdown && searchQuery && filteredPlaceTypes.length === 0 && placeTypes.length > 0 && (
                                     <View
                                         style={{
                                             position: 'absolute',
                                             top: '100%',
                                             left: 0,
                                             right: 0,
-                                            marginTop: 60, // Below the yellow test box
-                                            backgroundColor: 'lightblue',
-                                            borderWidth: 2,
-                                            borderColor: 'blue',
+                                            marginTop: 4,
+                                            padding: 16,
+                                            backgroundColor: colors.surface,
+                                            borderColor: colors.border,
+                                            borderWidth: 1,
                                             borderRadius: 8,
-                                            zIndex: 1002,
-                                            elevation: 20,
+                                            zIndex: 1001,
+                                            elevation: 15,
                                         }}
                                     >
-                                        <Text style={{ padding: 8, fontWeight: 'bold', color: 'black' }}>
-                                            TEST DROPDOWN (remove after debug):
+                                        <Text style={[styles.secondaryText, { textAlign: 'center' }]}>
+                                            No matching activity types found
                                         </Text>
-                                        {placeTypes.slice(0, 3).map((type) => (
-                                            <Pressable
-                                                key={`test-${type.value}`}
-                                                style={{
-                                                    paddingHorizontal: 16,
-                                                    paddingVertical: 8,
-                                                    borderBottomWidth: 1,
-                                                    borderBottomColor: 'blue'
-                                                }}
-                                                onPress={() => {
-                                                    console.log('🧪 TEST Selected:', type.label);
-                                                    togglePlaceType(type);
-                                                }}
-                                            >
-                                                <Text style={{ color: 'black' }}>{type.label}</Text>
-                                            </Pressable>
-                                        ))}
                                     </View>
                                 )}
                             </View>
