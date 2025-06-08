@@ -13,7 +13,12 @@ import {
 } from "./notification.service";
 import { useLocationStore } from "@/stores/location/location.store";
 import { useAuthStore } from "@/stores/auth/auth.store";
-import { registerCleanupFunction } from "./cleanup.service";
+import {
+    CleanupCategory,
+    registerCleanupFunction,
+    trackSubscription,
+    untrackSubscription,
+} from "./cleanup.service";
 
 // Singleton tracking manager
 class TrackingManager {
@@ -73,8 +78,11 @@ class TrackingManager {
             }
 
             // Register cleanup function
-            registerCleanupFunction(() => this.cleanup());
-            
+            registerCleanupFunction(
+                () => this.cleanup(),
+                CleanupCategory.TRACKING,
+            );
+
             this.isInitialized = true;
             console.log("Tracking manager initialized successfully");
             return true;
@@ -128,6 +136,11 @@ class TrackingManager {
                 }
             },
         );
+
+        // Track the subscription for automatic cleanup
+        if (this.authStateUnsubscribe) {
+            trackSubscription(this.authStateUnsubscribe);
+        }
     }
 
     /**
@@ -258,17 +271,21 @@ class TrackingManager {
      * Clean up resources
      */
     public cleanup(): void {
+        console.log("🧹 Cleaning up TrackingManager resources...");
+
         if (this.appStateSubscription) {
             this.appStateSubscription.remove();
             this.appStateSubscription = null;
         }
 
         if (this.authStateUnsubscribe) {
+            untrackSubscription(this.authStateUnsubscribe);
             this.authStateUnsubscribe();
             this.authStateUnsubscribe = null;
         }
 
         this.isInitialized = false;
+        console.log("✅ TrackingManager cleanup completed");
     }
 }
 

@@ -136,72 +136,171 @@ export const getNearbyMarkers = async (ctx: Context) => {
       return;
     }
 
-    console.log("Executing query with coordinates:", [longitude, latitude]);
+    // Validate radius (limit to reasonable values for performance)
+    const maxRadius = 5000; // 5km maximum
+    const validRadius = Math.min(Math.max(radius, 10), maxRadius); // Between 10m and 5km
+
+    console.log("Executing optimized query with coordinates:", [
+      longitude,
+      latitude,
+    ]);
 
     try {
-      // Convert radius from meters to approximate decimal degrees
-      // This is an approximation: 1 degree of latitude is ~111 km
-      // 1 degree of longitude varies with latitude (smaller at higher latitudes)
-      const latDelta = radius / 111000; // Convert meters to decimal degrees for latitude
+      // Use optimized bounding box with more precise calculations
+      const earthRadius = 6371000; // Earth's radius in meters
+      const latDelta = validRadius / earthRadius * (180 / Math.PI);
 
-      // Longitude degrees get smaller as you move away from equator
-      // cos(latitude) gives a scaling factor
-      const longDelta = radius / (111000 * Math.cos(latitude * Math.PI / 180));
+      // More accurate longitude delta calculation
+      const longDelta = validRadius /
+        (earthRadius * Math.cos(latitude * Math.PI / 180)) * (180 / Math.PI);
 
-      console.log("Search box:", {
+      console.log("Optimized search box:", {
         latMin: latitude - latDelta,
         latMax: latitude + latDelta,
         longMin: longitude - longDelta,
         longMax: longitude + longDelta,
+        radius: validRadius,
       });
 
-      // Use a bounding box query
-      const nearbyMarkers = await Marker.find({
-        "location.latitude": {
-          $gte: latitude - latDelta,
-          $lte: latitude + latDelta,
+      // Use MongoDB aggregation pipeline for better performance
+      const nearbyMarkers = await Marker.aggregate([
+        // Stage 1: Filter by bounding box (uses index)
+        {
+          $match: {
+            "location.latitude": {
+              $gte: latitude - latDelta,
+              $lte: latitude + latDelta,
+            },
+            "location.longitude": {
+              $gte: longitude - longDelta,
+              $lte: longitude + longDelta,
+            },
+          },
         },
-        "location.longitude": {
-          $gte: longitude - longDelta,
-          $lte: longitude + longDelta,
+        // Stage 2: Add calculated distance field
+        {
+          $addFields: {
+            distance: {
+              $let: {
+                vars: {
+                  dLat: {
+                    $multiply: [
+                      { $subtract: ["$location.latitude", latitude] },
+                      Math.PI / 180,
+                    ],
+                  },
+                  dLon: {
+                    $multiply: [
+                      { $subtract: ["$location.longitude", longitude] },
+                      Math.PI / 180,
+                    ],
+                  },
+                  lat1: { $multiply: [latitude, Math.PI / 180] },
+                  lat2: { $multiply: ["$location.latitude", Math.PI / 180] },
+                },
+                in: {
+                  $multiply: [
+                    earthRadius,
+                    {
+                      $multiply: [
+                        2,
+                        {
+                          $atan2: [
+                            {
+                              $sqrt: {
+                                $add: [
+                                  {
+                                    $pow: [
+                                      { $sin: { $divide: ["$$dLat", 2] } },
+                                      2,
+                                    ],
+                                  },
+                                  {
+                                    $multiply: [
+                                      { $cos: "$$lat1" },
+                                      { $cos: "$$lat2" },
+                                      {
+                                        $pow: [{
+                                          $sin: { $divide: ["$$dLon", 2] },
+                                        }, 2],
+                                      },
+                                    ],
+                                  },
+                                ],
+                              },
+                            },
+                            {
+                              $sqrt: {
+                                $subtract: [
+                                  1,
+                                  {
+                                    $add: [
+                                      {
+                                        $pow: [{
+                                          $sin: { $divide: ["$$dLat", 2] },
+                                        }, 2],
+                                      },
+                                      {
+                                        $multiply: [
+                                          { $cos: "$$lat1" },
+                                          { $cos: "$$lat2" },
+                                          {
+                                            $pow: [{
+                                              $sin: { $divide: ["$$dLon", 2] },
+                                            }, 2],
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                ],
+                              },
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          },
         },
-      }).exec();
+        // Stage 3: Filter by actual distance
+        {
+          $match: {
+            distance: { $lte: validRadius },
+          },
+        },
+        // Stage 4: Sort by distance (closest first)
+        {
+          $sort: { distance: 1 },
+        },
+        // Stage 5: Limit results for performance (max 50 markers)
+        {
+          $limit: 50,
+        },
+        // Stage 6: Add the _id as id field and round distance
+        {
+          $addFields: {
+            id: "$_id",
+            distance: { $round: ["$distance", 0] },
+          },
+        },
+      ]).exec();
 
       console.log(
-        `Found ${nearbyMarkers.length} nearby markers using bounding box`,
-      );
-
-      // Calculate actual distance for each marker
-      const markersWithDistance = nearbyMarkers.map((marker) => {
-        const distance = calculateDistance(
-          latitude,
-          longitude,
-          marker.location.latitude,
-          marker.location.longitude,
-        );
-
-        return {
-          ...marker.toObject(),
-          id: marker._id,
-          distance: Math.round(distance), // Round to nearest meter
-        };
-      });
-
-      // Filter by actual distance (since bounding box is approximate)
-      const filteredMarkers = markersWithDistance.filter(
-        (marker) => marker.distance <= radius,
-      );
-
-      console.log(
-        `Filtered to ${filteredMarkers.length} markers within ${radius} meters`,
+        `Found ${nearbyMarkers.length} nearby markers using optimized aggregation`,
       );
 
       // Format the response
       ctx.response.status = 200;
       ctx.response.body = {
         message:
-          `Found ${filteredMarkers.length} markers within ${radius} meters`,
-        markers: filteredMarkers,
+          `Found ${nearbyMarkers.length} markers within ${validRadius} meters`,
+        markers: nearbyMarkers,
+        searchRadius: validRadius,
+        searchCenter: { latitude, longitude },
       };
     } catch (dbError) {
       console.error("Database query error:", dbError);

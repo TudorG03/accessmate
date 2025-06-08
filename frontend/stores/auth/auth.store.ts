@@ -2,16 +2,12 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { MMKV } from "react-native-mmkv";
 import { router } from "expo-router";
-import {
-  User,
-  UserPreferences,
-  UserRole,
-} from "@/types/auth.types";
+import { User, UserPreferences, UserRole } from "@/types/auth.types";
 import { AuthService } from "./auth.service";
 import { getAccessToken, setAccessToken } from "./auth.token";
 import api, { registerLogoutHandler } from "@/services/api.service";
 import { AuthResponse } from "./auth.types";
-import { performCoreCleanup } from "@/services/cleanup.service";
+import { performCompleteCleanup } from "@/services/cleanup.service";
 
 const storage = new MMKV();
 
@@ -165,7 +161,7 @@ export const useAuthStore = create<AuthState>()(
             await AuthService.logout();
 
             // Cleanup resources to prevent memory leaks
-            await performCoreCleanup();
+            await performCompleteCleanup();
 
             setAccessToken(null);
             set({
@@ -177,10 +173,10 @@ export const useAuthStore = create<AuthState>()(
             router.navigate("/");
           } catch (error) {
             console.error("Logout error:", error);
-            
+
             // Still perform cleanup even if logout API call fails
-            await performCoreCleanup();
-            
+            await performCompleteCleanup();
+
             setAccessToken(null);
             set({
               isAuthenticated: false,
@@ -301,9 +297,9 @@ export const useAuthStore = create<AuthState>()(
           set({ isLoading: true, error: null });
           try {
             await AuthService.deleteUser(userId);
-            
+
             // After successful deletion, perform logout cleanup
-            await performCoreCleanup();
+            await performCompleteCleanup();
 
             setAccessToken(null);
             set({

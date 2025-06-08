@@ -8,14 +8,13 @@ import {
     stopLocationTracking,
 } from "@/services/location.service";
 
-
 export function useLocation() {
     const {
         currentLocation,
         lastLocationUpdateTime,
         isTrackingEnabled,
         obstacleCheckRadius,
-        processedMarkers,
+        getProcessedMarkerIds,
         setIsTrackingEnabled,
         setObstacleCheckRadius,
         clearExpiredProcessedMarkers,
@@ -155,12 +154,18 @@ export function useLocation() {
         };
     }, []);
 
+    // Initial cleanup of expired processed markers
+    useEffect(() => {
+        // Only do initial cleanup - periodic cleanup is handled by location service
+        clearExpiredProcessedMarkers();
+    }, [clearExpiredProcessedMarkers]);
+
     return {
         currentLocation,
         lastLocationUpdateTime,
         isTrackingEnabled,
         obstacleCheckRadius,
-        processedMarkersCount: processedMarkers.length,
+        processedMarkersCount: getProcessedMarkerIds().length,
         isInitializing,
         initialize,
         toggleTracking,

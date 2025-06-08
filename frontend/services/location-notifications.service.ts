@@ -1,7 +1,12 @@
 import * as Notifications from "expo-notifications";
 import { useLocationStore } from "@/stores/location/location.store";
 import { MarkerLocation } from "@/types/marker.types";
-import { registerCleanupFunction } from "./cleanup.service";
+import {
+    CleanupCategory,
+    registerCleanupFunction,
+    trackSubscription,
+    untrackSubscription,
+} from "./cleanup.service";
 import { useAuthStore } from "@/stores/auth/auth.store";
 import { UserRole } from "@/types/auth.types";
 
@@ -11,21 +16,30 @@ import { UserRole } from "@/types/auth.types";
 function canReceiveLocationNotifications(): boolean {
     try {
         const { user, isAuthenticated } = useAuthStore.getState();
-        
+
         if (!isAuthenticated || !user) {
-            console.log("🔔 LocationNotifications: User not authenticated, blocking notifications");
+            console.log(
+                "🔔 LocationNotifications: User not authenticated, blocking notifications",
+            );
             return false;
         }
 
         if (user.role !== UserRole.USER) {
-            console.log(`🔔 LocationNotifications: User role is '${user.role}', not 'user'. Blocking notifications for non-user roles.`);
+            console.log(
+                `🔔 LocationNotifications: User role is '${user.role}', not 'user'. Blocking notifications for non-user roles.`,
+            );
             return false;
         }
 
-        console.log("🔔 LocationNotifications: User role verification passed, notifications allowed");
+        console.log(
+            "🔔 LocationNotifications: User role verification passed, notifications allowed",
+        );
         return true;
     } catch (error) {
-        console.error("❌ LocationNotifications: Error checking user role:", error);
+        console.error(
+            "❌ LocationNotifications: Error checking user role:",
+            error,
+        );
         return false;
     }
 }
@@ -69,8 +83,11 @@ class LocationNotificationService {
             this.startLocationMonitoring();
 
             // Register cleanup function
-            registerCleanupFunction(() => this.cleanup());
-            
+            registerCleanupFunction(
+                () => this.cleanup(),
+                CleanupCategory.NOTIFICATIONS,
+            );
+
             console.log(
                 "✅ LocationNotificationService: Initialized successfully",
             );
@@ -161,8 +178,13 @@ class LocationNotificationService {
                 if (newLocation) {
                     this.onLocationUpdate(newLocation);
                 }
-            }
+            },
         );
+
+        // Track the subscription for automatic cleanup
+        if (this.locationUnsubscribe) {
+            trackSubscription(this.locationUnsubscribe);
+        }
 
         console.log("🔔 Location monitoring started with subscription stored");
     }
@@ -176,6 +198,7 @@ class LocationNotificationService {
 
         // Clean up the location subscription
         if (this.locationUnsubscribe) {
+            untrackSubscription(this.locationUnsubscribe);
             this.locationUnsubscribe();
             this.locationUnsubscribe = null;
             console.log("🧹 Location subscription cleaned up");
@@ -251,7 +274,9 @@ class LocationNotificationService {
 
             // Check if user is allowed to receive notifications (role-based filtering)
             if (!canReceiveLocationNotifications()) {
-                console.log(`🔔 User not eligible for location notifications, skipping trigger: ${trigger.config.id}`);
+                console.log(
+                    `🔔 User not eligible for location notifications, skipping trigger: ${trigger.config.id}`,
+                );
                 return;
             }
 
@@ -384,7 +409,7 @@ export const createDestinationNotification = (
     id: `destination-${Date.now()}`,
     title: "Destination Nearby",
     body: `You're approaching ${destinationName}`,
-    triggerRadius: 20, 
+    triggerRadius: 20,
     targetLocation: destinationLocation,
     categoryId: "location-based",
     data: {

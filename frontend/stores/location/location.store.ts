@@ -3,12 +3,10 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { MMKV } from "react-native-mmkv";
 import { MarkerLocation } from "@/types/marker.types";
 
-// Storage setup
 const storage = new MMKV({
     id: "location-storage",
 });
 
-// Functions to get and set items in MMKV storage
 const mmkvStorage = {
     getItem: (name: string) => {
         const value = storage.getString(name);
@@ -22,31 +20,25 @@ const mmkvStorage = {
     },
 };
 
-// Define constants
 const DEFAULT_CHECK_RADIUS = 100; // meters
 
-// Default location to use when no location is available
 const DEFAULT_LOCATION: MarkerLocation = {
     latitude: 44.461555,
     longitude: 26.073303,
 };
 
-// Define the location store state
 interface LocationState {
-    // Location data
     currentLocation: MarkerLocation | null;
     lastLocationUpdateTime: Date | null;
     isTrackingEnabled: boolean;
     obstacleCheckRadius: number;
-    processedMarkers: string[]; // IDs of markers that have been processed
-    processedTimestamps: Record<string, number>; // Timestamps for each processed marker
+    processedTimestamps: Record<string, number>; // Only store timestamps, derive array when needed
 
-    // Actions
     setCurrentLocation: (location: MarkerLocation) => void;
     setLastLocationUpdateTime: (time: Date) => void;
     setIsTrackingEnabled: (enabled: boolean) => void;
     setObstacleCheckRadius: (radius: number) => void;
-    addProcessedMarker: (markerId: string) => void; // Single marker version
+    addProcessedMarker: (markerId: string) => void;
     addProcessedMarkers: (markerIds: string[]) => void;
     removeProcessedMarkers: (markerIds: string[]) => void;
     clearExpiredProcessedMarkers: () => void;
@@ -54,26 +46,21 @@ interface LocationState {
     getProcessedMarkerIds: () => string[]; // Get list of processed marker IDs
     isMarkerInCooldown: (markerId: string) => boolean; // Check if specific marker is in cooldown
 
-    // Updated actions
     getLastKnownLocation: () => MarkerLocation; // Gets current location or default
     getPersistedLocation: () => MarkerLocation | null; // Gets only persisted location, null if none
     hasValidPersistedLocation: () => boolean; // Checks if we have a real persisted location
     clearPersistedLocation: () => void; // Clear the persisted location for testing
 }
 
-// Create the Zustand store with persistence
 export const useLocationStore = create<LocationState>()(
     persist(
         (set, get) => ({
-            // State
             currentLocation: null,
             lastLocationUpdateTime: null,
             isTrackingEnabled: true,
             obstacleCheckRadius: DEFAULT_CHECK_RADIUS,
-            processedMarkers: [],
             processedTimestamps: {},
 
-            // Actions
             setCurrentLocation: (location) => {
                 console.log(
                     "📍 Location Store: Setting current location:",
@@ -96,20 +83,15 @@ export const useLocationStore = create<LocationState>()(
             setObstacleCheckRadius: (radius) =>
                 set({ obstacleCheckRadius: radius }),
 
-            // Add marker IDs to the processed list with current timestamp
             addProcessedMarkers: (markerIds) => {
                 const now = Date.now();
                 const currentTimestamps = { ...get().processedTimestamps };
 
-                // Add timestamp for each marker
                 markerIds.forEach((id) => {
                     currentTimestamps[id] = now;
                 });
 
                 set({
-                    processedMarkers: [
-                        ...new Set([...get().processedMarkers, ...markerIds]),
-                    ],
                     processedTimestamps: currentTimestamps,
                 });
             },
@@ -124,48 +106,51 @@ export const useLocationStore = create<LocationState>()(
                 });
 
                 set({
-                    processedMarkers: get().processedMarkers.filter((id) =>
-                        !markerIds.includes(id)
-                    ),
                     processedTimestamps: currentTimestamps,
                 });
             },
 
             // Clear expired processed markers based on 10-minute cooldown
             clearExpiredProcessedMarkers: () => {
-                const now = Date.now();
-                const cooldownPeriod = 10 * 60 * 1000; // 10 minutes in milliseconds
-                const currentTimestamps = { ...get().processedTimestamps };
-                const expiredMarkerIds: string[] = [];
+                try {
+                    const now = Date.now();
+                    const cooldownPeriod = 10 * 60 * 1000; // 10 minutes in milliseconds
+                    const timestamps = get().processedTimestamps;
 
-                // Find expired markers
-                Object.entries(currentTimestamps).forEach(
-                    ([markerId, timestamp]) => {
-                        if (now - timestamp >= cooldownPeriod) {
-                            expiredMarkerIds.push(markerId);
-                            delete currentTimestamps[markerId];
-                        }
-                    },
-                );
+                    if (!timestamps) {
+                        return; // No timestamps to clear
+                    }
 
-                // Update state only if there are expired markers
-                if (expiredMarkerIds.length > 0) {
-                    console.log(
-                        `🕒 Clearing ${expiredMarkerIds.length} expired markers from cooldown`,
+                    const currentTimestamps = { ...timestamps };
+                    const expiredMarkerIds: string[] = [];
+
+                    // Find expired markers
+                    Object.entries(currentTimestamps).forEach(
+                        ([markerId, timestamp]) => {
+                            if (now - timestamp >= cooldownPeriod) {
+                                expiredMarkerIds.push(markerId);
+                                delete currentTimestamps[markerId];
+                            }
+                        },
                     );
-                    set({
-                        processedMarkers: get().processedMarkers.filter((id) =>
-                            !expiredMarkerIds.includes(id)
-                        ),
-                        processedTimestamps: currentTimestamps,
-                    });
+
+                    // Update state only if there are expired markers
+                    if (expiredMarkerIds.length > 0) {
+                        console.log(
+                            `🕒 Clearing ${expiredMarkerIds.length} expired markers from cooldown`,
+                        );
+                        set({
+                            processedTimestamps: currentTimestamps,
+                        });
+                    }
+                } catch (error) {
+                    console.error("❌ Error clearing expired markers:", error);
                 }
             },
 
             // Reset all processed markers
             resetProcessedMarkers: () =>
                 set({
-                    processedMarkers: [],
                     processedTimestamps: {},
                 }),
 
@@ -176,18 +161,22 @@ export const useLocationStore = create<LocationState>()(
                 currentTimestamps[markerId] = now;
 
                 set({
-                    processedMarkers: [
-                        ...new Set([...get().processedMarkers, markerId]),
-                    ],
                     processedTimestamps: currentTimestamps,
                 });
             },
 
-            // Get list of processed marker IDs (automatically clears expired ones)
+            // Get list of processed marker IDs (without triggering cleanup)
             getProcessedMarkerIds: () => {
-                // Clear expired markers first
-                get().clearExpiredProcessedMarkers();
-                return get().processedMarkers;
+                try {
+                    const timestamps = get().processedTimestamps;
+                    return timestamps ? Object.keys(timestamps) : [];
+                } catch (error) {
+                    console.error(
+                        "❌ Error getting processed marker IDs:",
+                        error,
+                    );
+                    return [];
+                }
             },
 
             // Get last known location or default
@@ -238,17 +227,26 @@ export const useLocationStore = create<LocationState>()(
 
             // Check if specific marker is in cooldown
             isMarkerInCooldown: (markerId: string) => {
-                const currentTimestamps = get().processedTimestamps;
-                const timestamp = currentTimestamps[markerId];
+                try {
+                    const currentTimestamps = get().processedTimestamps;
+                    if (!currentTimestamps) {
+                        return false; // No timestamps available, not in cooldown
+                    }
 
-                if (!timestamp) {
-                    return false; // Not processed, so not in cooldown
+                    const timestamp = currentTimestamps[markerId];
+
+                    if (!timestamp) {
+                        return false; // Not processed, so not in cooldown
+                    }
+
+                    const now = Date.now();
+                    const cooldownPeriod = 10 * 60 * 1000; // 10 minutes in milliseconds
+
+                    return (now - timestamp) < cooldownPeriod;
+                } catch (error) {
+                    console.error("❌ Error checking marker cooldown:", error);
+                    return false; // Default to not in cooldown on error
                 }
-
-                const now = Date.now();
-                const cooldownPeriod = 10 * 60 * 1000; // 10 minutes in milliseconds
-
-                return (now - timestamp) < cooldownPeriod;
             },
         }),
         {
@@ -258,17 +256,47 @@ export const useLocationStore = create<LocationState>()(
             partialize: (state) => ({
                 isTrackingEnabled: state.isTrackingEnabled,
                 obstacleCheckRadius: state.obstacleCheckRadius,
-                processedMarkers: state.processedMarkers,
                 processedTimestamps: state.processedTimestamps,
                 currentLocation: state.currentLocation,
                 lastLocationUpdateTime: state.lastLocationUpdateTime,
             }),
             onRehydrateStorage: () => (state) => {
                 if (state) {
+                    // Migration: Handle old data format that might have processedMarkers array
+                    if (
+                        (state as any).processedMarkers &&
+                        Array.isArray((state as any).processedMarkers)
+                    ) {
+                        console.log(
+                            "📍 Location Store: Migrating old processedMarkers format",
+                        );
+                        // Convert old processedMarkers array to timestamps if needed
+                        const now = Date.now();
+                        const migratedTimestamps: Record<string, number> = {};
+                        (state as any).processedMarkers.forEach(
+                            (markerId: string) => {
+                                migratedTimestamps[markerId] = now;
+                            },
+                        );
+                        state.processedTimestamps = {
+                            ...state.processedTimestamps,
+                            ...migratedTimestamps,
+                        };
+                        // Remove the old property
+                        delete (state as any).processedMarkers;
+                    }
+
+                    // Ensure processedTimestamps exists
+                    if (!state.processedTimestamps) {
+                        state.processedTimestamps = {};
+                    }
+
                     console.log("📍 Location Store: Rehydrated from storage:", {
                         currentLocation: state.currentLocation,
                         lastLocationUpdateTime: state.lastLocationUpdateTime,
                         isTrackingEnabled: state.isTrackingEnabled,
+                        processedTimestampsCount:
+                            Object.keys(state.processedTimestamps).length,
                     });
                 } else {
                     console.log("📍 Location Store: No state to rehydrate");
