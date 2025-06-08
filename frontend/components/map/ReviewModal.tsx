@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Modal, TouchableOpacity, ScrollView, Image, TextInput, Alert } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, ScrollView, Image, TextInput, Alert, Platform, ToastAndroid } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '@/stores/theme/useTheme';
 import * as ImagePicker from 'expo-image-picker';
@@ -198,14 +198,20 @@ export default function ReviewModal({
                 );
 
                 // Show success feedback and close modal
-                Alert.alert(
-                    "Review Submitted",
-                    "Thank you for your review! Your contribution helps make places more accessible for everyone.",
-                    [{ text: "OK", onPress: () => {
-                        handleCloseReviewModal();
-                        onReviewSubmitted();
-                    }}]
-                );
+                if (Platform.OS === "android") {
+                    ToastAndroid.show("Review submitted successfully!", ToastAndroid.SHORT);
+                } else if (Platform.OS === "ios") {
+                    Alert.alert(
+                        "Review Submitted",
+                        "Thank you for your review! Your contribution helps make places more accessible for everyone.",
+                        [{
+                            text: "OK", onPress: () => {
+                                handleCloseReviewModal();
+                                onReviewSubmitted();
+                            }
+                        }]
+                    );
+                }
             } else if (reviewStoreError) {
                 // If there was an error from the store, show it
                 setReviewError(reviewStoreError);
@@ -216,6 +222,7 @@ export default function ReviewModal({
             setReviewError(error instanceof Error ? error.message : 'Failed to submit review. Please try again.');
         } finally {
             setReviewLoading(false);
+            onClose();
         }
     }
 
