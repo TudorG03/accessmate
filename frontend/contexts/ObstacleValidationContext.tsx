@@ -46,7 +46,7 @@ export const ObstacleValidationProvider: React.FC<ObstacleValidationProviderProp
             try {
                 await onValidate(response, validationData.markerIds, validationData.obstacleType);
             } catch (error) {
-                console.error('❌ Error in validation callback:', error);
+                // Silent error handling
             }
         }
         hideValidationModal();

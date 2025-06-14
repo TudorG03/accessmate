@@ -20,186 +20,157 @@ import { getLocationConfig } from "@/config/location.config";
 // Get configuration instance
 const config = getLocationConfig();
 
-// Validate configuration on service initialization
-const configValidation = config.validateConfiguration();
-if (!configValidation.isValid) {
-    console.error(
-        "❌ Location service configuration validation failed:",
-        configValidation.errors,
-    );
-    console.log("📍 Current configuration:", config.getConfigSnapshot());
-} else {
-    console.log("✅ Location service configuration validated successfully");
-}
-
 // Export the task name for external use
 export const LOCATION_TRACKING_TASK = config.LOCATION_TRACKING_TASK;
 
-// State
-let cleanupInterval: NodeJS.Timeout | null = null;
-let isTrackingActive = false;
+// Store references to active tracking state
+let backgroundTaskTracker: string | null = null;
+let markerCheckInterval: NodeJS.Timeout | null = null;
 
-// Helper Functions
-const safeGetLocationStore = () => {
+// Async function to safely get location store
+async function getLocationStore() {
     try {
         return useLocationStore.getState();
     } catch (error) {
-        console.error("❌ Error accessing location store:", error);
         return null;
     }
-};
+}
 
-const withTimeout = async <T>(
-    promise: Promise<T>,
-    timeoutMs: number,
-    errorMessage: string = "Operation timeout",
-): Promise<T> => {
-    let timeoutId: NodeJS.Timeout | undefined;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(
-            () => reject(new Error(errorMessage)),
-            timeoutMs,
-        );
-    });
-
-    try {
-        const result = await Promise.race([promise, timeoutPromise]);
-        if (timeoutId) clearTimeout(timeoutId);
-        return result;
-    } catch (error) {
-        if (timeoutId) clearTimeout(timeoutId);
-        throw error;
-    }
-};
-
-const executeWithStore = <T>(
-    operation: (store: ReturnType<typeof useLocationStore.getState>) => T,
-    fallback?: T,
-): T | undefined => {
-    const store = safeGetLocationStore();
-    if (!store) {
-        console.error("❌ Store not available for operation");
-        return fallback;
-    }
-    return operation(store);
-};
-
-const logLocation = (location: Location.LocationObject, context: string) => {
-    console.log(
-        `📍 ${context}: ${location.coords.latitude.toFixed(6)}, ${
-            location.coords.longitude.toFixed(6)
-        }`,
-    );
-};
-
-const manageCleanupInterval = (start: boolean) => {
-    if (cleanupInterval) {
-        clearInterval(cleanupInterval);
-        untrackInterval(cleanupInterval);
-        cleanupInterval = null;
+// Background task for location tracking
+TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
+    if (error) {
+        console.error("❌ Background location task error:", error);
+        return;
     }
 
-    if (start) {
-        cleanupInterval = setInterval(() => {
-            executeWithStore((store) => store.clearExpiredProcessedMarkers());
-        }, config.CLEANUP_INTERVAL);
-        trackInterval(cleanupInterval);
-    }
-};
+    if (data) {
+        const { locations } = data as any;
+        const location = locations[0];
 
-// Register cleanup
-registerCleanupFunction(async () => {
-    console.log("🧹 Executing location service cleanup...");
+        if (location && isAuthenticatedSimple()) {
+            console.log("📍 Background task: Processing location update:", {
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
+                accuracy: location.coords.accuracy,
+                timestamp: new Date(location.timestamp).toISOString(),
+            });
 
-    manageCleanupInterval(false);
+            const store = await getLocationStore();
+            if (!store) {
+                console.warn(
+                    "❌ Background task: Could not get location store",
+                );
+                return;
+            }
 
-    try {
-        const hasStarted = await Location.hasStartedLocationUpdatesAsync(
-            config.LOCATION_TRACKING_TASK,
-        );
-        if (hasStarted) {
-            await Location.stopLocationUpdatesAsync(
-                config.LOCATION_TRACKING_TASK,
-            );
-            untrackBackgroundTask(config.LOCATION_TRACKING_TASK);
-            console.log("🧹 Location tracking stopped during cleanup");
-        }
-    } catch (error) {
-        console.error(
-            "❌ Error stopping location tracking during cleanup:",
-            error,
-        );
-    }
-
-    isTrackingActive = false;
-    console.log("✅ Location service cleanup completed");
-}, CleanupCategory.LOCATION);
-
-// Background Task
-TaskManager.defineTask(
-    config.LOCATION_TRACKING_TASK,
-    async ({ data, error }) => {
-        if (error) {
-            console.error("Location tracking task error:", error);
-            return;
-        }
-
-        const { locations } =
-            data as { locations: Location.LocationObject[] } ||
-            {};
-        if (!locations?.length) return;
-
-        const location = locations[locations.length - 1];
-        logLocation(location, "Background update");
-
-        executeWithStore((store) => {
+            // Update location in store with timestamp
             store.setCurrentLocation({
                 latitude: location.coords.latitude,
                 longitude: location.coords.longitude,
             });
-            store.setLastLocationUpdateTime(new Date());
-        });
 
-        await checkNearbyMarkers(location);
-    },
-);
+            // Check if tracking is enabled before processing markers
+            if (!store.isTrackingEnabled) {
+                console.log(
+                    "📍 Background task: Tracking disabled, skipping marker check",
+                );
+                return;
+            }
 
-// Core Functions
+            console.log("📍 Background task: Checking nearby markers...");
+            await checkNearbyMarkers(location);
+        }
+    }
+});
+
+// Main cleanup function for location services
+export async function cleanupLocationServices(): Promise<void> {
+    try {
+        // Clean up background task
+        if (backgroundTaskTracker) {
+            untrackBackgroundTask(backgroundTaskTracker);
+            backgroundTaskTracker = null;
+        }
+
+        // Clean up interval
+        if (markerCheckInterval) {
+            untrackInterval(markerCheckInterval);
+            clearInterval(markerCheckInterval);
+            markerCheckInterval = null;
+        }
+
+        // Stop location tracking
+        try {
+            const isTracking = await Location.hasStartedLocationUpdatesAsync(
+                LOCATION_TRACKING_TASK,
+            );
+            if (isTracking) {
+                await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK);
+            }
+        } catch (error) {
+            // Silent error handling
+        }
+    } catch (error) {
+        // Silent error handling
+    }
+}
+
+// Register cleanup function
+registerCleanupFunction(cleanupLocationServices, CleanupCategory.LOCATION);
+
+// Background task error handler
+TaskManager.defineTask(LOCATION_TRACKING_TASK + "_ERROR", async ({ error }) => {
+    if (error) {
+        // Silent error handling
+    }
+});
+
+// Function to check for nearby markers and send notifications
 async function checkNearbyMarkers(location: Location.LocationObject) {
     try {
-        logLocation(location, "Checking for nearby markers");
-
         if (!isAuthenticatedSimple()) {
-            console.log(
-                "❌ User not authenticated, skipping nearby marker check",
-            );
+            console.log("📍 Marker check: User not authenticated, skipping");
             return;
         }
 
-        const store = safeGetLocationStore();
-        if (!store?.isTrackingEnabled) {
-            console.log("❌ Location tracking disabled, skipping marker check");
+        const store = await getLocationStore();
+        if (!store) {
+            console.warn("❌ Marker check: Could not get location store");
             return;
         }
 
-        const {
-            clearExpiredProcessedMarkers,
-            addProcessedMarker,
-            isMarkerInCooldown,
-        } = store;
+        // Check if location tracking is enabled
+        if (!store.isTrackingEnabled) {
+            console.log("📍 Marker check: Tracking disabled, skipping");
+            return;
+        }
 
+        // Clear expired processed markers periodically
         try {
-            clearExpiredProcessedMarkers();
-            console.log("🧹 Cleared expired processed markers");
+            console.log("🧹 Clearing expired processed markers...");
+            const processedBefore = store.getProcessedMarkerIds().length;
+            store.clearExpiredProcessedMarkers();
+            const processedAfter = store.getProcessedMarkerIds().length;
+            console.log(
+                `🧹 Processed markers: ${processedBefore} → ${processedAfter}`,
+            );
         } catch (cleanupError) {
-            console.error("❌ Error clearing expired markers:", cleanupError);
+            console.warn(
+                "⚠️ Marker check: Error clearing expired markers:",
+                cleanupError,
+            );
         }
 
-        try {
-            console.log(
-                `📊 Fetching markers within ${config.MARKER_PROXIMITY_THRESHOLD}m radius`,
-            );
+        console.log(
+            `📍 Marker check: Fetching markers near [${
+                location.coords.latitude.toFixed(6)
+            }, ${
+                location.coords.longitude.toFixed(6)
+            }] within ${config.MARKER_PROXIMITY_THRESHOLD}m`,
+        );
 
+        // Fetch markers near the user's location
+        try {
             const markers = await withTimeout(
                 MarkerService.getMarkersNearLocation({
                     latitude: location.coords.latitude,
@@ -209,32 +180,28 @@ async function checkNearbyMarkers(location: Location.LocationObject) {
                 "Marker fetch timeout",
             );
 
+            console.log(
+                `📍 Marker check: Found ${markers?.length || 0} markers nearby`,
+            );
+
             if (!markers?.length) {
-                console.log("📊 No markers found nearby");
                 return;
             }
 
-            console.log(`📊 Found ${markers.length} total markers nearby`);
             await processNearbyMarkers(location, markers, {
-                addProcessedMarker,
-                isMarkerInCooldown,
+                addProcessedMarker: (id: string) =>
+                    store.addProcessedMarker(id),
+                isMarkerInCooldown: (id: string) =>
+                    store.isMarkerInCooldown(id),
             });
         } catch (markerError) {
-            console.error("❌ Error fetching nearby markers:", markerError);
-            if (
-                markerError instanceof Error &&
-                markerError.message !== "Marker fetch timeout"
-            ) {
-                console.log(
-                    "🔄 Will retry marker check in next location update",
-                );
-            }
+            console.error(
+                "❌ Marker check: Error fetching markers:",
+                markerError,
+            );
         }
     } catch (error) {
-        console.error("❌ Critical error in checkNearbyMarkers:", error);
-        if (error instanceof Error && error.stack) {
-            console.error("Stack trace:", error.stack);
-        }
+        console.error("❌ Marker check: General error:", error);
     }
 }
 
@@ -248,19 +215,17 @@ async function processNearbyMarkers(
 ) {
     const { addProcessedMarker, isMarkerInCooldown } = storeFunctions;
 
-    // Log marker details
-    markers.forEach((marker, index) => {
-        console.log(
-            `📌 Marker ${
-                index + 1
-            }: type=${marker.obstacleType}, id=${marker.id}, ` +
-                `position=${marker.location.latitude.toFixed(6)},${
-                    marker.location.longitude.toFixed(6)
-                }`,
-        );
-    });
+    console.log(`📍 Processing ${markers.length} markers for notifications`);
 
-    // Process markers and group by type
+    // Log current processed markers count for debugging
+    const processedMarkerIds = useLocationStore.getState()
+        .getProcessedMarkerIds();
+    console.log(
+        `📍 Currently ${processedMarkerIds.length} markers in cooldown:`,
+        processedMarkerIds.slice(0, 5).map((id) => id.substring(0, 8)),
+    );
+
+    // Group markers by obstacle type that are within proximity and not in cooldown
     const markersByType = markers.reduce((acc, marker) => {
         const distance = calculateDistance(
             location.coords.latitude,
@@ -269,84 +234,72 @@ async function processNearbyMarkers(
             marker.location.longitude,
         );
 
+        const inCooldown = marker.id ? isMarkerInCooldown(marker.id) : false;
+
         console.log(
-            `📏 Distance to marker ${marker.id}: ${
-                distance.toFixed(2)
-            }m (threshold: ${config.MARKER_PROXIMITY_THRESHOLD}m)`,
+            `📍 Marker ${
+                marker.id?.substring(0, 8)
+            } (${marker.obstacleType}): distance=${
+                distance.toFixed(1)
+            }m, cooldown=${inCooldown}`,
         );
 
         if (
             distance <= config.MARKER_PROXIMITY_THRESHOLD && marker.id &&
-            !isMarkerInCooldown(marker.id)
+            !inCooldown
         ) {
-            console.log(
-                `✅ Marker ${marker.id} is within threshold and not in cooldown`,
-            );
-
             if (!acc[marker.obstacleType]) {
                 acc[marker.obstacleType] = [];
             }
             acc[marker.obstacleType].push({ ...marker, distance });
 
-            try {
-                addProcessedMarker(marker.id);
-            } catch (processError) {
-                console.error(
-                    `❌ Error marking marker ${marker.id} as processed:`,
-                    processError,
-                );
-            }
-        } else if (
-            distance <= config.MARKER_PROXIMITY_THRESHOLD && marker.id &&
-            isMarkerInCooldown(marker.id)
-        ) {
-            logCooldownStatus(marker.id, distance);
+            // DON'T add to processed list here - wait until notification is sent
+            console.log(
+                `📍 Queued marker ${
+                    marker.id.substring(0, 8)
+                } for ${marker.obstacleType} notification`,
+            );
+        } else if (inCooldown) {
+            console.log(
+                `⏰ Marker ${
+                    marker.id?.substring(0, 8)
+                } in cooldown, skipping notification`,
+            );
         }
 
         return acc;
     }, {} as Record<string, Array<any>>);
 
-    await sendNotificationsForMarkerTypes(markersByType);
-}
+    const notificationTypes = Object.keys(markersByType);
+    console.log(
+        `📍 Will send notifications for ${notificationTypes.length} obstacle types:`,
+        notificationTypes,
+    );
 
-function logCooldownStatus(markerId: string, distance: number) {
-    const store = safeGetLocationStore();
-    if (!store) return;
-
-    const timestamp = store.processedTimestamps[markerId];
-    if (timestamp) {
-        const elapsed = Date.now() - timestamp;
-        const remaining = config.MARKER_COOLDOWN_DURATION - elapsed;
-        const remainingMinutes = Math.ceil(remaining / (60 * 1000));
-
-        console.log(
-            `⏳ Marker ${markerId} is in cooldown period (${
-                distance.toFixed(2)
-            }m away) - ${remainingMinutes} minutes remaining`,
-        );
-    }
+    // Send notifications and add markers to cooldown only after successful sending
+    await sendNotificationsForMarkerTypes(markersByType, addProcessedMarker);
 }
 
 async function sendNotificationsForMarkerTypes(
     markersByType: Record<string, Array<any>>,
+    addProcessedMarker: (id: string) => void,
 ) {
     const typesCount = Object.keys(markersByType).length;
-    console.log(
-        `📊 Found ${typesCount} types of obstacles nearby for validation`,
-    );
 
     if (typesCount === 0) {
         console.log(
-            "❌ No new markers within the proximity threshold to validate",
+            "📍 No notifications to send - no markers in range or all in cooldown",
         );
         return;
     }
+
+    console.log(`📍 Sending notifications for ${typesCount} obstacle types`);
 
     for (const [obstacleType, typeMarkers] of Object.entries(markersByType)) {
         if (typeMarkers.length === 0) continue;
 
         console.log(
-            `🔔 Attempting to send validation notification for ${typeMarkers.length} nearby ${obstacleType} markers`,
+            `📍 Sending notification for ${obstacleType}: ${typeMarkers.length} markers`,
         );
 
         try {
@@ -358,232 +311,189 @@ async function sendNotificationsForMarkerTypes(
 
             if (notified) {
                 console.log(
-                    `✅ Successfully sent validation notification for ${obstacleType}`,
+                    `✅ Successfully sent notification for ${obstacleType}`,
                 );
+
+                // Add markers to cooldown after successful notification
+                for (const marker of typeMarkers) {
+                    try {
+                        addProcessedMarker(marker.id);
+                        console.log(
+                            `📍 Added marker ${
+                                marker.id.substring(0, 8)
+                            } to processed list`,
+                        );
+                    } catch (processError) {
+                        console.warn(
+                            `⚠️ Error adding marker ${marker.id} to processed list:`,
+                            processError,
+                        );
+                    }
+                }
             } else {
                 console.warn(
-                    `❌ Failed to send validation notification for ${obstacleType}`,
+                    `⚠️ Failed to send notification for ${obstacleType}`,
                 );
+                // Don't add to cooldown if notification failed
             }
         } catch (notificationError) {
             console.error(
-                `❌ Error sending validation notification for ${obstacleType}:`,
+                `❌ Error sending notification for ${obstacleType}:`,
                 notificationError,
             );
+            // Don't add to cooldown if notification failed
         }
     }
 }
 
+// Helper function to add timeout to promises
+function withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    timeoutMessage: string,
+): Promise<T> {
+    return Promise.race([
+        promise,
+        new Promise<T>((_, reject) =>
+            setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs)
+        ),
+    ]);
+}
+
+// Request location permissions
 export async function requestLocationPermissions(): Promise<boolean> {
     try {
-        console.log("📍 Requesting location permissions...");
+        // Request foreground location permission
+        let { status } = await Location.requestForegroundPermissionsAsync();
 
-        // Request foreground permission
-        const { status: foregroundStatus } = await Location
-            .requestForegroundPermissionsAsync();
-        console.log(
-            `📍 Foreground location permission status: ${foregroundStatus}`,
-        );
-
-        if (foregroundStatus !== "granted") {
-            console.log("❌ Foreground location permission denied");
+        if (status !== "granted") {
             return false;
         }
 
         // Request notification permissions
-        try {
-            console.log("🔔 Requesting notification permissions...");
-            const { status: notificationStatus } = await Notifications
-                .getPermissionsAsync();
-            console.log(
-                `🔔 Current notification permission status: ${notificationStatus}`,
-            );
+        const { status: notificationStatus } = await Notifications
+            .requestPermissionsAsync();
 
-            if (notificationStatus !== "granted") {
-                const { status: newStatus } = await Notifications
-                    .requestPermissionsAsync();
-                console.log(
-                    `🔔 New notification permission status: ${newStatus}`,
-                );
-
-                if (newStatus !== "granted") {
-                    console.warn("⚠️ Notification permissions were denied");
-                }
-            }
-        } catch (notificationError) {
-            console.error(
-                "❌ Error requesting notification permissions:",
-                notificationError,
-            );
+        if (notificationStatus !== "granted") {
+            // Continue without notifications but allow location tracking
         }
 
-        // Request background permission for iOS
+        // On iOS, also request background location permission
         if (Platform.OS === "ios") {
-            console.log("📱 Requesting iOS background location permissions...");
             const { status: backgroundStatus } = await Location
                 .requestBackgroundPermissionsAsync();
-            console.log(
-                `📱 iOS background location permission status: ${backgroundStatus}`,
-            );
 
             if (backgroundStatus !== "granted") {
-                console.log("❌ Background location permission denied");
                 return false;
             }
         }
 
-        console.log("✅ All required permissions granted successfully");
         return true;
     } catch (error) {
-        console.error("❌ Error requesting location permissions:", error);
         return false;
     }
 }
 
+// Start location tracking
 export async function startLocationTracking(): Promise<boolean> {
     try {
-        const permissionGranted = await requestLocationPermissions();
-        if (!permissionGranted) return false;
+        // Check if tracking is already started
+        const isAlreadyTracking = await Location.hasStartedLocationUpdatesAsync(
+            LOCATION_TRACKING_TASK,
+        );
 
-        const hasStarted = await Location.hasStartedLocationUpdatesAsync(
-            config.LOCATION_TRACKING_TASK,
-        )
-            .catch(() => false);
-
-        if (hasStarted) {
-            console.log("Location tracking already started");
+        if (isAlreadyTracking) {
             return true;
         }
 
-        console.log("Starting location tracking service...");
-
-        const trackingOptions: Location.LocationTaskOptions = {
+        // Start location tracking
+        await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, {
             accuracy: Location.Accuracy.Balanced,
             timeInterval: config.LOCATION_UPDATE_INTERVAL,
             distanceInterval: config.MINIMUM_DISTANCE_CHANGE,
-            showsBackgroundLocationIndicator: true,
-            activityType: Location.ActivityType.Fitness,
-        };
-
-        if (Platform.OS === "android") {
-            trackingOptions.foregroundService = {
+            deferredUpdatesInterval: config.LOCATION_UPDATE_INTERVAL,
+            foregroundService: {
                 notificationTitle: config.NOTIFICATION_TITLE,
                 notificationBody: config.NOTIFICATION_BODY,
                 notificationColor: config.NOTIFICATION_COLOR,
-            };
-        }
+            },
+            pausesUpdatesAutomatically: false,
+            showsBackgroundLocationIndicator: false,
+        });
 
-        await Location.startLocationUpdatesAsync(
-            config.LOCATION_TRACKING_TASK,
-            trackingOptions,
-        );
+        // Track the background task
+        trackBackgroundTask(LOCATION_TRACKING_TASK);
+        backgroundTaskTracker = LOCATION_TRACKING_TASK;
 
-        manageCleanupInterval(true);
-        trackBackgroundTask(config.LOCATION_TRACKING_TASK);
-        isTrackingActive = true;
-
-        console.log("Location tracking started successfully");
-        executeWithStore((store) => store.setIsTrackingEnabled(true));
         return true;
     } catch (error) {
-        console.error("Error starting location tracking:", error);
         return false;
     }
 }
 
+// Stop location tracking
 export async function stopLocationTracking(): Promise<boolean> {
     try {
-        const hasStarted = await Location.hasStartedLocationUpdatesAsync(
-            config.LOCATION_TRACKING_TASK,
+        const isTracking = await Location.hasStartedLocationUpdatesAsync(
+            LOCATION_TRACKING_TASK,
         );
-        if (!hasStarted) {
-            console.log("Location tracking not started");
+
+        if (!isTracking) {
             return true;
         }
 
-        await Location.stopLocationUpdatesAsync(config.LOCATION_TRACKING_TASK);
-        console.log("Location tracking stopped");
+        await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK);
 
-        executeWithStore((store) => store.setIsTrackingEnabled(false));
-        manageCleanupInterval(false);
-        untrackBackgroundTask(config.LOCATION_TRACKING_TASK);
-        isTrackingActive = false;
+        // Clean up background task tracker
+        if (backgroundTaskTracker) {
+            untrackBackgroundTask(backgroundTaskTracker);
+            backgroundTaskTracker = null;
+        }
 
         return true;
     } catch (error) {
-        console.error("Error stopping location tracking:", error);
         return false;
     }
 }
 
+// Get current location
 export async function getCurrentLocation(): Promise<
     Location.LocationObject | null
 > {
     try {
-        const permissionGranted = await requestLocationPermissions();
-        if (!permissionGranted) return null;
-
         const location = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
         });
-
-        executeWithStore((store) => {
-            store.setCurrentLocation({
-                latitude: location.coords.latitude,
-                longitude: location.coords.longitude,
-            });
-            store.setLastLocationUpdateTime(new Date());
-        });
-
         return location;
     } catch (error) {
-        console.error("Error getting current location:", error);
         return null;
     }
 }
 
-/**
- * @deprecated Use centralized cleanup service instead
- */
-export async function cleanupLocationService(): Promise<void> {
-    console.log(
-        "🧹 Starting location service cleanup (deprecated - use cleanup service)...",
-    );
-
-    manageCleanupInterval(false);
-
+// Enhanced cleanup function (exported for external use)
+export async function stopLocationTrackingAndCleanup(): Promise<void> {
     try {
-        const hasStarted = await Location.hasStartedLocationUpdatesAsync(
-            config.LOCATION_TRACKING_TASK,
+        // Stop location tracking
+        const isTracking = await Location.hasStartedLocationUpdatesAsync(
+            LOCATION_TRACKING_TASK,
         );
-        if (hasStarted) {
-            await Location.stopLocationUpdatesAsync(
-                config.LOCATION_TRACKING_TASK,
-            );
-            untrackBackgroundTask(config.LOCATION_TRACKING_TASK);
+        if (isTracking) {
+            await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK);
+        }
+
+        // Clean up background task
+        if (backgroundTaskTracker) {
+            untrackBackgroundTask(backgroundTaskTracker);
+            backgroundTaskTracker = null;
+        }
+
+        // Clean up intervals
+        if (markerCheckInterval) {
+            untrackInterval(markerCheckInterval);
+            clearInterval(markerCheckInterval);
+            markerCheckInterval = null;
         }
     } catch (error) {
-        console.error("❌ Error stopping location tracking:", error);
+        // Silent error handling
     }
-
-    isTrackingActive = false;
-    console.log("✅ Location service cleanup completed");
-}
-
-/**
- * Debug function to log current location service configuration
- */
-export function logLocationServiceConfiguration(): void {
-    config.logConfiguration();
-    console.log(
-        "📍 Location service validation:",
-        config.validateConfiguration(),
-    );
-}
-
-/**
- * Get current location service configuration snapshot
- */
-export function getLocationServiceConfiguration() {
-    return config.getConfigSnapshot();
 }

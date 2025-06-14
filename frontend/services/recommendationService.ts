@@ -262,7 +262,6 @@ export const clearRecommendationCache = async (
   }
 };
 
-// Default export with all methods
 export default {
   getRecommendations,
   getRecommendationAnalytics,

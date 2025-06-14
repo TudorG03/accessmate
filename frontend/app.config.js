@@ -19,6 +19,19 @@ export default {
   assetBundlePatterns: [
     "**/*"
   ],
+  plugins: [
+    [
+      "expo-location",
+      {
+        locationAlwaysAndWhenInUsePermission: "AccessMate needs your location to show accessible routes and notify you about nearby obstacles.",
+        locationAlwaysPermission: "AccessMate needs background location access to detect obstacles even when the app is in the background.",
+        locationWhenInUsePermission: "AccessMate needs your location to show accessible routes near you.",
+        isIosBackgroundLocationEnabled: true,
+        isAndroidBackgroundLocationEnabled: true,
+        isAndroidForegroundServiceEnabled: true
+      }
+    ]
+  ],
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.csie.accessmate",

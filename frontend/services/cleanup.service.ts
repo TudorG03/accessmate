@@ -317,25 +317,19 @@ export async function cleanupTrackingServices(): Promise<void> {
  */
 export async function cleanupNotificationServices(): Promise<void> {
     console.log("🧹 Starting notification services cleanup...");
-    await executeCleanupCategory(CleanupCategory.NOTIFICATIONS);
-}
 
-/**
- * Get cleanup status for debugging
- */
-export function getCleanupStatus() {
-    return {
-        totalFunctions: getTotalCleanupFunctions(),
-        byCategory: Object.fromEntries(
-            Array.from(cleanupRegistry.entries()).map((
-                [category, set],
-            ) => [category, set.size]),
-        ),
-        tracked: {
-            intervals: cleanupState.intervals.size,
-            subscriptions: cleanupState.subscriptions.size,
-            tasks: cleanupState.tasks.size,
-        },
-        isShuttingDown: cleanupState.isShuttingDown,
-    };
+    // Clean up notification listeners
+    cleanupNotificationListeners();
+
+    // Clear modal function reference
+    try {
+        const { clearObstacleValidationModal } = await import(
+            "./notification-handler.service"
+        );
+        clearObstacleValidationModal();
+    } catch (error) {
+        // Silent error if import fails
+    }
+
+    await executeCleanupCategory(CleanupCategory.NOTIFICATIONS);
 }

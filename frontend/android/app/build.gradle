@@ -150,10 +150,6 @@ dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 
-    // Add androidx.activity dependency to fix expo-image-picker crash
-    implementation 'androidx.activity:activity:1.9.2'
-    implementation 'androidx.activity:activity-ktx:1.9.2'
-
     def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
     def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";
     def isWebpAnimatedEnabled = (findProperty('expo.webp.animated') ?: "") == "true";

@@ -1,12 +1,11 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
-import { initializeNotificationListeners } from "./notification-events.service";
-import { handleNotificationTap } from "./notification-handler.service";
 import { useAuthStore } from "@/stores/auth/auth.store";
 import { UserRole } from "@/types/auth.types";
+import { getNotificationConfig } from "@/config/notification.config";
 
-// Define notification channels for Android
-export const OBSTACLE_NOTIFICATION_CHANNEL = "obstacle-notifications";
+// Get configuration instance
+const config = getNotificationConfig();
 
 // Track if notifications have been initialized
 let notificationsInitialized = false;
@@ -17,21 +16,17 @@ let notificationsInitialized = false;
 function canReceiveNotifications(): boolean {
     try {
         const { user, isAuthenticated } = useAuthStore.getState();
-        
+
         if (!isAuthenticated || !user) {
-            console.log("🔔 User not authenticated, blocking notifications");
             return false;
         }
 
         if (user.role !== UserRole.USER) {
-            console.log(`🔔 User role is '${user.role}', not 'user'. Blocking notifications for non-user roles.`);
             return false;
         }
 
-        console.log("🔔 User role verification passed, notifications allowed");
         return true;
     } catch (error) {
-        console.error("❌ Error checking user role:", error);
         return false;
     }
 }
@@ -39,45 +34,43 @@ function canReceiveNotifications(): boolean {
 /**
  * Request notification permissions
  */
-export async function requestNotificationPermissions(): Promise<boolean> {
+async function requestNotificationPermissions(): Promise<boolean> {
     try {
-        console.log("🔔 Requesting notification permissions...");
         const { status: existingStatus } = await Notifications
             .getPermissionsAsync();
+        let finalStatus = existingStatus;
 
-        console.log(
-            `🔔 Current notification permission status: ${existingStatus}`,
-        );
-
-        // Return true if permissions are already granted
-        if (existingStatus === "granted") {
-            console.log("✅ Notification permissions already granted");
-            return true;
+        if (existingStatus !== "granted") {
+            const { status } = await Notifications.requestPermissionsAsync();
+            finalStatus = status;
         }
 
-        // Request permissions
-        console.log("📱 Requesting notification permissions from user...");
-        const { status } = await Notifications.requestPermissionsAsync({
-            ios: {
-                allowAlert: true,
-                allowBadge: true,
-                allowSound: true,
-            },
-            android: {},
-        });
+        if (finalStatus !== "granted") {
+            return false;
+        }
 
-        console.log(`📱 New notification permission status: ${status}`);
-        const granted = status === "granted";
-        console.log(
-            granted
-                ? "✅ Notification permissions granted"
-                : "❌ Notification permissions denied",
-        );
-
-        return granted;
+        return true;
     } catch (error) {
-        console.error("❌ Error requesting notification permissions:", error);
         return false;
+    }
+}
+
+/**
+ * Create notification channels for Android
+ */
+async function createNotificationChannels(): Promise<void> {
+    if (Platform.OS === "android") {
+        await Notifications.setNotificationChannelAsync(
+            config.OBSTACLE_NOTIFICATION_CHANNEL,
+            {
+                name: config.CHANNEL_NAME,
+                importance: Notifications.AndroidImportance.MAX,
+                vibrationPattern: config.CHANNEL_VIBRATION_PATTERN,
+                lightColor: config.CHANNEL_LIGHT_COLOR,
+                sound: config.DEFAULT_SOUND,
+                description: config.CHANNEL_DESCRIPTION,
+            },
+        );
     }
 }
 
@@ -86,98 +79,42 @@ export async function requestNotificationPermissions(): Promise<boolean> {
  */
 export async function initializeNotifications(): Promise<boolean> {
     try {
-        console.log("🔔 Initializing notification system...");
-
         // Don't initialize twice
         if (notificationsInitialized) {
-            console.log("✅ Notification system already initialized");
             return true;
         }
 
         // Request permissions first
-        console.log("🔔 Requesting notification permissions...");
         const permissionGranted = await requestNotificationPermissions();
         if (!permissionGranted) {
-            console.error("❌ Notification permissions not granted");
             return false;
         }
 
         // Configure notification handler for foreground notifications
-        console.log("🔔 Setting up notification handler...");
         Notifications.setNotificationHandler({
             handleNotification: async () => {
-                console.log("📲 Handling incoming notification in foreground");
                 return {
-                    shouldShowAlert: true,
-                    shouldPlaySound: true,
-                    shouldSetBadge: true,
+                    shouldShowAlert: config.SHOW_ALERT,
+                    shouldPlaySound: config.PLAY_SOUND,
+                    shouldSetBadge: config.SET_BADGE,
                     priority: Notifications.AndroidNotificationPriority.MAX,
                 };
             },
         });
 
-        // Initialize notification tap handlers
-        console.log("🔔 Initializing notification tap handlers...");
-        initializeNotificationListeners(handleNotificationTap);
+        // Note: Notification tap handlers are initialized by NotificationProvider
+        // to prevent duplicate listener registration
 
         // Create notification channel for Android
         if (Platform.OS === "android") {
-            console.log("🔔 Creating Android notification channels...");
             await createNotificationChannels();
         }
 
-        console.log("✅ Notification system initialized successfully");
         notificationsInitialized = true;
 
         return true;
     } catch (error) {
-        console.error("❌ Failed to initialize notification system:", error);
         return false;
-    }
-}
-
-/**
- * Create notification channels (Android only)
- */
-async function createNotificationChannels(): Promise<void> {
-    try {
-        console.log(
-            "🔔 Creating Android notification channel:",
-            OBSTACLE_NOTIFICATION_CHANNEL,
-        );
-
-        // Get existing channels to check if our channel already exists
-        const existingChannels = await Notifications
-            .getNotificationChannelsAsync();
-        console.log(
-            `📱 Found ${existingChannels.length} existing notification channels`,
-        );
-
-        const ourChannelExists = existingChannels.some(
-            (channel) => channel.id === OBSTACLE_NOTIFICATION_CHANNEL,
-        );
-
-        if (ourChannelExists) {
-            console.log("✅ Obstacle notification channel already exists");
-        } else {
-            // Create our notification channel
-            await Notifications.setNotificationChannelAsync(
-                OBSTACLE_NOTIFICATION_CHANNEL,
-                {
-                    name: "Obstacle Notifications",
-                    importance: Notifications.AndroidImportance.MAX,
-                    vibrationPattern: [0, 250, 250, 250],
-                    lightColor: "#F1B24A",
-                    description:
-                        "Notifications about nearby accessibility obstacles",
-                    enableVibrate: true,
-                    showBadge: true,
-                },
-            );
-            console.log("✅ Android notification channel created successfully");
-        }
-    } catch (error) {
-        console.error("❌ Error creating notification channels:", error);
     }
 }
 
@@ -190,34 +127,18 @@ export async function sendObstacleValidationNotification(
     markers: Array<any>,
 ): Promise<boolean> {
     try {
-        console.log(
-            `🔔 Preparing validation notification for ${obstacleType} with ${markers.length} markers`,
-        );
-
         // Check if user is allowed to receive notifications (role-based filtering)
         if (!canReceiveNotifications()) {
-            console.log("🔔 User not eligible for notifications, skipping notification send");
             return false;
         }
 
         // Make sure notifications are initialized
         if (!notificationsInitialized) {
-            console.log(
-                "🔄 Notification system not initialized, initializing now...",
-            );
             const initialized = await initializeNotifications();
             if (!initialized) {
-                console.error("❌ Failed to initialize notification system");
                 return false;
             }
         }
-
-        // Format the obstacle type name for display
-        const obstacleTypeName = obstacleType
-            .replace(/_/g, " ")
-            .replace(/\b\w/g, (char) => char.toUpperCase());
-
-        console.log(`🔔 Preparing notification for ${obstacleTypeName}`);
 
         // Get the marker IDs
         const markerIds = markers.map((m) => m.id);
@@ -225,10 +146,8 @@ export async function sendObstacleValidationNotification(
 
         // Create notification content with validation options
         const content: Notifications.NotificationContentInput = {
-            title: `Nearby ${obstacleTypeName}`,
-            body: `There ${
-                markerCount === 1 ? "is" : "are"
-            } ${markerCount} ${obstacleTypeName.toLowerCase()} obstacle(s) nearby. Is it still there?`,
+            title: config.getNotificationTitle(obstacleType),
+            body: config.getNotificationBody(obstacleType, markerCount),
             data: {
                 obstacleType,
                 markerIds,
@@ -238,76 +157,12 @@ export async function sendObstacleValidationNotification(
             sound: true,
         };
 
-        console.log(
-            "📱 Notification content prepared:",
-            JSON.stringify(content),
-        );
-
         // Add Android-specific properties
         if (Platform.OS === "android") {
-            console.log("📱 Setting Android-specific properties");
             // @ts-ignore - Add Android-specific channel identifier
-            content.categoryIdentifier = "obstacle-validation";
+            content.categoryIdentifier = config.OBSTACLE_VALIDATION_CATEGORY;
             // @ts-ignore - Add Android-specific channel ID
-            content.channelId = OBSTACLE_NOTIFICATION_CHANNEL;
-            // @ts-ignore - Set priority
-            content.priority = Notifications.AndroidNotificationPriority.MAX;
-        }
-
-        // Send the notification immediately
-        console.log("📲 Scheduling notification for immediate delivery");
-        const notificationId = await Notifications.scheduleNotificationAsync({
-            content,
-            trigger: null, // Show immediately
-        });
-
-        console.log(
-            `✅ Sent obstacle validation notification: ${notificationId}`,
-        );
-        return true;
-    } catch (error) {
-        console.error(
-            "❌ Error sending obstacle validation notification:",
-            error,
-        );
-        return false;
-    }
-}
-
-/**
- * Send a test notification
- */
-export async function sendTestNotification(): Promise<boolean> {
-    try {
-        // Check if user is allowed to receive notifications (role-based filtering)
-        if (!canReceiveNotifications()) {
-            console.log("🔔 User not eligible for test notifications, skipping notification send");
-            return false;
-        }
-
-        // Make sure notifications are initialized
-        if (!notificationsInitialized) {
-            const initialized = await initializeNotifications();
-            if (!initialized) return false;
-        }
-
-        // Create notification content
-        const content: Notifications.NotificationContentInput = {
-            title: "Test Notification",
-            body: `This is a test notification sent at ${
-                new Date().toLocaleTimeString()
-            }`,
-            data: {
-                test: true,
-                timestamp: new Date().toISOString(),
-            },
-            sound: true,
-        };
-
-        // Add Android-specific properties
-        if (Platform.OS === "android") {
-            // @ts-ignore - Add Android-specific channel
-            content.channelId = OBSTACLE_NOTIFICATION_CHANNEL;
+            content.channelId = config.OBSTACLE_NOTIFICATION_CHANNEL;
             // @ts-ignore - Set priority
             content.priority = Notifications.AndroidNotificationPriority.MAX;
         }
@@ -318,12 +173,8 @@ export async function sendTestNotification(): Promise<boolean> {
             trigger: null, // Show immediately
         });
 
-        console.log(`Sent test notification: ${notificationId}`);
         return true;
     } catch (error) {
-        console.error("Error sending test notification:", error);
         return false;
     }
 }
-
-

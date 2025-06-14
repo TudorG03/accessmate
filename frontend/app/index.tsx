@@ -7,10 +7,8 @@ import { Video, ResizeMode } from "expo-av";
 export default function LandingPage() {
     const videoRef = useRef<Video>(null);
 
-    // Use useFocusEffect instead of useEffect to replay video when screen is focused
     useFocusEffect(
         useCallback(() => {
-            // This function runs when the screen comes into focus
             const playVideo = async () => {
                 if (videoRef.current) {
                     try {

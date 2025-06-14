@@ -1,14 +1,18 @@
 import React from 'react';
-import { View, Text, Switch, StyleSheet, ActivityIndicator } from 'react-native';
-import { useLocationContext } from '@/components/LocationProvider';
+import { View, Text, Switch, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { useLocation } from '@/stores/location/hooks/useLocation';
 import { useTheme } from '@/stores/theme/useTheme';
 
 export const LocationTrackingToggle = () => {
-    const { isTrackingEnabled, isInitializing, toggleTracking } = useLocationContext();
+    const { isTrackingEnabled, isInitializing, toggleTracking, retryTracking } = useLocation();
     const { colors, isDark } = useTheme();
 
     const handleToggle = async () => {
         await toggleTracking();
+    };
+
+    const handleRetry = async () => {
+        await retryTracking();
     };
 
     return (
@@ -29,19 +33,39 @@ export const LocationTrackingToggle = () => {
                 ]}>
                     Get notified about nearby accessibility obstacles
                 </Text>
+                {!isTrackingEnabled && !isInitializing && (
+                    <Text style={[
+                        styles.statusText,
+                        { color: '#ff9800' }
+                    ]}>
+                        Tracking is currently disabled
+                    </Text>
+                )}
             </View>
 
-            {isInitializing ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-                <Switch
-                    trackColor={{ false: '#767577', true: '#F1B24A' }}
-                    thumbColor={isTrackingEnabled ? '#ffffff' : '#f4f3f4'}
-                    ios_backgroundColor="#3e3e3e"
-                    onValueChange={handleToggle}
-                    value={isTrackingEnabled}
-                />
-            )}
+            <View style={styles.controlsContainer}>
+                {isInitializing ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                    <>
+                        <Switch
+                            trackColor={{ false: '#767577', true: '#F1B24A' }}
+                            thumbColor={isTrackingEnabled ? '#ffffff' : '#f4f3f4'}
+                            ios_backgroundColor="#3e3e3e"
+                            onValueChange={handleToggle}
+                            value={isTrackingEnabled}
+                        />
+                        {!isTrackingEnabled && (
+                            <TouchableOpacity
+                                style={[styles.retryButton, { backgroundColor: colors.primary }]}
+                                onPress={handleRetry}
+                            >
+                                <Text style={styles.retryButtonText}>Retry</Text>
+                            </TouchableOpacity>
+                        )}
+                    </>
+                )}
+            </View>
         </View>
     );
 };
@@ -52,12 +76,12 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: 16,
-        borderRadius: 8,
+        borderRadius: 12,
         marginVertical: 8,
     },
     textContainer: {
         flex: 1,
-        paddingRight: 16,
+        marginRight: 12,
     },
     title: {
         fontSize: 16,
@@ -66,5 +90,27 @@ const styles = StyleSheet.create({
     },
     description: {
         fontSize: 14,
+        lineHeight: 20,
+    },
+    statusText: {
+        fontSize: 12,
+        fontWeight: '500',
+        marginTop: 4,
+    },
+    controlsContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    retryButton: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 6,
+        marginLeft: 8,
+    },
+    retryButtonText: {
+        color: '#ffffff',
+        fontSize: 12,
+        fontWeight: '600',
     },
 }); 

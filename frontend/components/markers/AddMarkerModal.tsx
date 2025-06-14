@@ -458,20 +458,22 @@ const AddMarkerModal: React.FC<AddMarkerModalProps> = ({ visible, onClose, editi
                                     <Text className="text-red-600 text-center text-base font-medium">{error}</Text>
                                 )}
 
-                                {/* Debug action button */}
-                                <TouchableOpacity
-                                    className="mt-2 self-center"
-                                    onPress={() => setShowDebugInfo(!showDebugInfo)}
-                                >
-                                    <Text className="text-blue-600 text-sm underline">
-                                        {showDebugInfo ? "Hide Details" : "Show Details"}
-                                    </Text>
-                                </TouchableOpacity>
+                                {/* Debug action button - only show in development */}
+                                {__DEV__ && (
+                                    <TouchableOpacity
+                                        className="mt-2 self-center"
+                                        onPress={() => setShowDebugInfo(!showDebugInfo)}
+                                    >
+                                        <Text className="text-blue-600 text-sm underline">
+                                            {showDebugInfo ? "Hide Details" : "Show Details"}
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
                             </View>
                         )}
 
-                        {/* Debug info panel */}
-                        {showDebugInfo && (
+                        {/* Debug info panel - only show in development */}
+                        {__DEV__ && showDebugInfo && (
                             <View className="mb-3 p-3 rounded-lg bg-gray-100 border border-gray-300">
                                 <Text className="text-gray-700 font-bold mb-2">Debug Information:</Text>
                                 <Text className="text-gray-600 text-sm mb-1">Attempts: {submitAttempts}</Text>

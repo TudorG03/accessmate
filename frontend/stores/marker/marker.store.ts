@@ -196,7 +196,7 @@ export const useMarkerStore = create<MarkerState>()(
 
             fetchNearbyMarkers: async (
                 location: MarkerLocation,
-                radius = 300,
+                radius = 500,
             ) => {
                 try {
                     // Check if user is authenticated before making the API call

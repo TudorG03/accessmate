@@ -7,6 +7,7 @@ import { useMarker } from '@/stores/marker/hooks/useMarker';
 import useAuth from '@/stores/auth/hooks/useAuth';
 import { formatDistance } from '@/utils/distanceUtils';
 import navigationHistoryService from '@/services/navigation-history.service';
+import { TransportMethod } from '@/types/auth.types';
 
 interface RouteConfirmationModalProps {
     visible: boolean;
@@ -20,6 +21,22 @@ interface RouteConfirmationModalProps {
     placeId: string | null;
     originLocation: { latitude: number, longitude: number } | null;
 }
+
+/**
+ * Maps user's preferred transport method to route confirmation options
+ * Wheelchair and Walking both map to 'walking' mode with accessibility features
+ */
+const getDefaultTransportMode = (userTransportMethod: TransportMethod): 'walking' | 'driving' => {
+    switch (userTransportMethod) {
+        case TransportMethod.WHEELCHAIR:
+        case TransportMethod.WALKING:
+            return 'walking';
+        case TransportMethod.CAR:
+            return 'driving';
+        default:
+            return 'walking';
+    }
+};
 
 export default function RouteConfirmationModal({
     visible,
@@ -38,6 +55,22 @@ export default function RouteConfirmationModal({
     const { isDark, colors } = useTheme();
     const { markers } = useMarker();
     const { user } = useAuth();
+
+    // Set initial transport mode based on user's preference
+    useEffect(() => {
+        if (user?.preferences?.transportMethod && visible) {
+            const defaultTransport = getDefaultTransportMode(user.preferences.transportMethod);
+            setSelectedTransport(defaultTransport);
+
+            if (user.preferences.transportMethod === TransportMethod.WHEELCHAIR) {
+                setUseAccessibleRoute(true);
+            }
+
+            if (user.preferences.transportMethod === TransportMethod.WALKING) {
+                setUseAccessibleRoute(false);
+            }
+        }
+    }, [user, visible]);
 
     // Fetch place details when placeId changes
     useEffect(() => {
@@ -265,16 +298,18 @@ export default function RouteConfirmationModal({
                                                     Not available for long distances
                                                 </Text>
                                             )}
+                                            {user?.preferences?.transportMethod === TransportMethod.WHEELCHAIR && (
+                                                <Text className={`ml-2 text-xs px-2 py-1 rounded ${isDark ? 'bg-blue-700 text-blue-300' : 'bg-blue-200 text-blue-700'}`}>
+                                                    Always enabled for wheelchair users
+                                                </Text>
+                                            )}
                                         </View>
                                         <Switch
                                             value={useAccessibleRoute}
                                             onValueChange={setUseAccessibleRoute}
-                                            disabled={Boolean(routeInfo && routeInfo.distance > 6)}
-                                            trackColor={{
-                                                false: isDark ? '#4b5563' : '#d1d5db',
-                                                true: routeInfo && routeInfo.distance > 6 ? (isDark ? '#4b5563' : '#d1d5db') : '#F1B24A'
-                                            }}
-                                            thumbColor={routeInfo && routeInfo.distance > 6 ? (isDark ? '#6b7280' : '#9ca3af') : (isDark ? '#e5e7eb' : '#ffffff')}
+                                            disabled={routeInfo && routeInfo.distance > 6 || user?.preferences?.transportMethod === TransportMethod.WHEELCHAIR}
+                                            trackColor={{ false: isDark ? '#374151' : '#d1d5db', true: '#F1B24A' }}
+                                            thumbColor={useAccessibleRoute ? '#ffffff' : isDark ? '#9ca3af' : '#f3f4f6'}
                                         />
                                     </View>
 

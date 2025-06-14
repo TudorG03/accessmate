@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { View, Text, ActivityIndicator, TouchableOpacity, Dimensions, StyleSheet, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MapView, { Marker as MapMarker, PROVIDER_GOOGLE, Region, Callout, Polyline } from "react-native-maps";
@@ -18,17 +18,30 @@ import { getDirections } from "@/services/places.service";
 import DirectionsPanel from '@/components/map/DirectionsPanel';
 import useAuth from "../../stores/auth/hooks/useAuth";
 import { formatDistance } from "@/utils/distanceUtils";
+import { ensureValidRouteData } from "@/utils/map.utils";
 import accessibleRouteService from "@/services/accessible-route.service";
 import navigationHistoryService from "@/services/navigation-history.service";
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import { useLocationStore } from "@/stores/location/location.store";
-import { getCurrentLocation } from "@/services/location.service";
+import { useLocation } from "@/stores/location/hooks/useLocation";
+import { useMapPermissions } from "@/hooks/useMapPermissions";
+import OptimizedMarker from "@/components/map/OptimizedMarker";
+
 
 type LocationObjectType = Location.LocationObject;
 
 export default function MapScreen() {
-  // Use global location store instead of local state
-  const { currentLocation, setCurrentLocation } = useLocationStore();
+  // Use the location hook for proper location management
+  const { currentLocation, ensureValidLocation, isTrackingEnabled, toggleTracking } = useLocation();
+
+  // Use the map permissions hook for permission management
+  const {
+    locationPermissionStatus,
+    hasLocationPermission,
+    canShowUserLocation,
+    requestLocationPermissionsAndRefresh
+  } = useMapPermissions();
+
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -62,13 +75,79 @@ export default function MapScreen() {
   // Use our marker hook to access marker data
   const { markers, findNearbyMarkers } = useMarker();
 
+  // Memoize the markers slice to prevent unnecessary re-renders
+  const visibleMarkers = useMemo(() => markers.slice(0, 30), [markers]);
+
   // Add this line with the other state hooks
   const { user } = useAuth();
+
+  // Memoize anchor object to prevent re-creation
+  const markerAnchor = useMemo(() => ({ x: 0.5, y: 1.0 }), []);
+  const routePointAnchor = useMemo(() => ({ x: 0.5, y: 0.5 }), []);
+
+  // Memoize Polyline dash pattern
+  const routeDashPattern = useMemo(() => [5, 5], []);
+
+  // Memoize MapView event handlers to prevent re-renders
+  const handleMapReady = useCallback(() => {
+    // Map is ready
+  }, []);
+
+  const closeDirectionsPanel = useCallback(() => {
+    setShowDirections(false);
+  }, []);
+
+  const closeRouteConfirmationModal = useCallback(() => {
+    setRouteConfirmationModalVisible(false);
+  }, []);
+
+  const closeDetailsModal = useCallback(() => {
+    setDetailsModalVisible(false);
+  }, []);
+
+  // Memoize default region to prevent re-creation on every render
+  const defaultRegion = useMemo((): Region => {
+    // Get the most current location from store
+    const locationStore = useLocationStore.getState();
+    const persistedLocation = locationStore.getPersistedLocation();
+
+    if (persistedLocation &&
+      (Math.abs(persistedLocation.latitude) > 0.000001 ||
+        Math.abs(persistedLocation.longitude) > 0.000001)) {
+      return {
+        latitude: persistedLocation.latitude,
+        longitude: persistedLocation.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+    }
+
+    // Fallback to default location if no valid persisted location
+    return {
+      latitude: 44.461555, // Default to Bucharest
+      longitude: 26.073303,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    };
+  }, []);
+
+  // Use a ref to store the initial region - prevents MapView re-renders
+  const initialRegionRef = useRef<Region | null>(null);
+
+  // Set initial region only when we first get a valid location
+  if (!initialRegionRef.current) {
+    if (currentRegion) {
+      initialRegionRef.current = currentRegion;
+    } else {
+      initialRegionRef.current = defaultRegion;
+    }
+  }
+
+  // Permission checking is now handled by useMapPermissions hook
 
   // Handle navigation parameters to open place details modal
   useEffect(() => {
     if (params.openPlaceDetails === "true" && params.placeId) {
-      console.log("Opening place details modal for place ID:", params.placeId);
       setSelectedPoiPlaceId(params.placeId as string);
       setPlaceDetailsModalVisible(true);
 
@@ -80,7 +159,6 @@ export default function MapScreen() {
   // Handle navigation parameters to start navigation directly
   useEffect(() => {
     if (params.startNavigation === "true" && params.placeId) {
-      console.log("Starting navigation for place ID:", params.placeId);
       // Store the place ID and open the route confirmation modal
       setSelectedPlace({ id: params.placeId as string });
       setRouteConfirmationModalVisible(true);
@@ -91,56 +169,52 @@ export default function MapScreen() {
   }, [params.startNavigation, params.placeId]);
 
   // Handle closing the place details modal
-  const handlePlaceDetailsModalClose = () => {
+  const handlePlaceDetailsModalClose = useCallback(() => {
     setPlaceDetailsModalVisible(false);
     setSelectedPoiPlaceId(null);
-  };
+  }, []);
+
+  // Permission request logic is now handled by useMapPermissions hook
 
   // Function to handle marker selection
-  const handleMarkerPress = (marker: Marker) => {
+  const handleMarkerPress = useCallback((marker: Marker) => {
     setSelectedMarker(marker);
     setDetailsModalVisible(true);
-  };
+  }, []);
 
   // Handle place selection from search
-  const handlePlaceSelected = (place: { id: string, name: string, address: string }) => {
+  const handlePlaceSelected = useCallback((place: { id: string, name: string, address: string }) => {
     // Only store the ID when opening the modal - full details will be fetched by the modal
     setSelectedPlace({ id: place.id });
     setRouteConfirmationModalVisible(true);
-  };
+  }, []);
 
   // Handle request to show place info from search results
-  const handlePlaceInfoRequested = (placeId: string) => {
-    console.log("Showing info for place:", placeId);
+  const handlePlaceInfoRequested = useCallback((placeId: string) => {
     setSelectedPoiPlaceId(placeId);
     setPlaceDetailsModalVisible(true);
-  };
+  }, []);
 
   // Handle POI click on the map
-  const handlePoiClick = (event: any) => {
-    console.log("POI clicked:", JSON.stringify(event.nativeEvent));
-
+  const handlePoiClick = useCallback((event: any) => {
     // Extract the placeId from the nativeEvent
     const { placeId, name, coordinate } = event.nativeEvent;
 
     if (placeId) {
-      console.log(`POI selected: ${name} (${placeId}) at coordinates: ${JSON.stringify(coordinate)}`);
       setSelectedPoiPlaceId(placeId);
       setPlaceDetailsModalVisible(true);
-    } else {
-      console.error("No placeId found in POI click event:", event);
     }
-  };
+  }, []);
 
   // Handle starting navigation from a POI
-  const handleStartNavigation = (placeId: string) => {
+  const handleStartNavigation = useCallback((placeId: string) => {
     // Store the place ID and open the route confirmation modal
     setSelectedPlace({ id: placeId });
     setRouteConfirmationModalVisible(true);
-  };
+  }, []);
 
   // Handle location selection from search
-  const handleLocationSelected = (location: { latitude: number, longitude: number }) => {
+  const handleLocationSelected = useCallback((location: { latitude: number, longitude: number }) => {
     // Animate map to the selected location
     if (mapRef.current) {
       mapRef.current.animateToRegion({
@@ -150,19 +224,9 @@ export default function MapScreen() {
         longitudeDelta: 0.01,
       }, 1000);
     }
-  };
+  }, []);
 
-  // Add a helper function to ensure we have a valid route to display
-  const ensureValidRouteData = (routeData: any) => {
-    if (!routeData) return null;
-
-    // Check if points is missing but exists in a nested data property (handle nested responses)
-    if (!routeData.points && routeData.data && routeData.data.points) {
-      return routeData.data;
-    }
-
-    return routeData;
-  };
+  // Route validation is handled by imported ensureValidRouteData from utils
 
   const getGoogleMapsApiRoute = async (
     originLocation: {
@@ -188,11 +252,6 @@ export default function MapScreen() {
   }
   > => {
     const directionsResult = await getDirections(originLocation, destinationLocation, transportMode);
-    console.log("Google Directions API fallback result received:",
-      `points: ${directionsResult?.points?.length || 0}, ` +
-      `distance: ${directionsResult?.distance}, ` +
-      `duration: ${directionsResult?.duration}`
-    );
     return directionsResult;
   }
 
@@ -209,8 +268,12 @@ export default function MapScreen() {
     useAccessibleRouting: boolean = true,
     navigationId: string | null = null
   ) => {
-    if (!currentLocation) {
-      console.error("Cannot start navigation: User location is not available");
+    // Get the most current location from store for navigation
+    const locationStore = useLocationStore.getState();
+    let userLocation = locationStore.getPersistedLocation();
+
+    if (!userLocation ||
+      (Math.abs(userLocation.latitude) < 0.000001 && Math.abs(userLocation.longitude) < 0.000001)) {
       Alert.alert(
         "Location Required",
         "Your current location is not available. Please enable location services and try again.",
@@ -235,16 +298,11 @@ export default function MapScreen() {
         setCurrentNavigationId(navigationId);
       }
 
-      console.log(`Starting navigation to ${destination.name} using ${transportMode} mode`);
-      console.log(`Accessible routing: ${useAccessibleRouting ? 'Enabled' : 'Disabled'}`);
-
       // Get directions from current location to destination
       const originLocation = {
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude
       };
-
-      console.log(`Origin: ${JSON.stringify(originLocation)}, Destination: ${JSON.stringify(destination.location)}`);
 
       let directionsResult;
 
@@ -252,7 +310,6 @@ export default function MapScreen() {
       if (transportMode === 'walking' && useAccessibleRouting) {
         // Get relevant obstacles from the store - only consider obstacles with moderate or higher severity
         const relevantObstacles = markers.filter(marker => marker.obstacleScore >= 2);
-        console.log(`Found ${relevantObstacles.length} relevant obstacles for routing`);
 
         // Use the accessible routing service
         const routingParams = {
@@ -269,7 +326,6 @@ export default function MapScreen() {
 
         // Call the backend API for accessible routing
         try {
-          console.log("Using backend accessible routing with OSM road networks");
           directionsResult = await accessibleRouteService.getAccessibleRoute(routingParams);
 
           // Ensure we have valid route data
@@ -280,19 +336,13 @@ export default function MapScreen() {
             throw new Error("Invalid route data received from routing service");
           }
 
-          console.log("OSM-based routing result received:",
-            `points: ${directionsResult?.points?.length || 0}, ` +
-            `hasObstacles: ${directionsResult?.hasObstacles}, ` +
-            `distance: ${directionsResult?.distance}, ` +
-            `duration: ${directionsResult?.duration}`
-          );
+
 
           // Validate route distance - check for unreasonably long routes
           if (directionsResult.distance > 50) {
             throw new Error("The calculated route is unusually long (over 50km). Please choose a closer destination.");
           }
         } catch (error) {
-          console.error("Error with OSM-based routing:", error);
 
           // Show a specific error message to the user
           const errorMessage = error instanceof Error
@@ -332,7 +382,6 @@ export default function MapScreen() {
         }
       } else {
         // Otherwise use standard Google directions
-        console.log("Using standard Google directions API");
         directionsResult = await getGoogleMapsApiRoute(originLocation, destination.location, transportMode);
       }
 
@@ -356,14 +405,10 @@ export default function MapScreen() {
         "Failed to calculate a valid route. Please try again with a different destination.",
         [{ text: "OK" }]
       );
-      console.warn("No valid route points received from routing service");
+
       cancelNavigation();
       return;
     }
-
-    console.log(`Setting ${directionsResult.points.length} route coordinates`);
-    console.log("First point:", JSON.stringify(directionsResult.points[0]));
-    console.log("Last point:", JSON.stringify(directionsResult.points[directionsResult.points.length - 1]));
 
     // Set the navigation state with the route data
     setIsNavigating(true);
@@ -377,20 +422,15 @@ export default function MapScreen() {
 
     // Fit map to show the entire route
     if (mapRef.current && directionsResult.points && directionsResult.points.length > 0) {
-      console.log("Fitting map to route coordinates");
       mapRef.current.fitToCoordinates(directionsResult.points, {
         edgePadding: { top: 80, right: 50, bottom: 80, left: 50 },
         animated: true
       });
-    } else {
-      console.warn("Cannot fit map to coordinates: " +
-        (!mapRef.current ? "Map ref is null" : "No points available"));
     }
   };
 
   // Helper function to handle routing errors
   const handleRoutingError = (error: unknown) => {
-    console.error('Error getting directions:', error);
 
     // Reset navigation state
     cancelNavigation();
@@ -414,15 +454,15 @@ export default function MapScreen() {
       try {
         navigationHistoryService.completeNavigation(currentNavigationId)
           .then(() => {
-            console.log(`Navigation ${currentNavigationId} marked as completed`);
+
           })
           .catch((error: Error) => {
-            console.error("Failed to mark navigation as completed:", error);
+            // Silent error handling
           });
 
         setCurrentNavigationId(null);
       } catch (error) {
-        console.error("Error marking navigation as completed:", error);
+        // Silent error handling
       }
     }
 
@@ -450,165 +490,184 @@ export default function MapScreen() {
     }
   };
 
-  // Handler for map ready event
-  const handleMapReady = () => {
-    console.log("Map is ready, POI clicks should now work");
-  };
 
-  useEffect(() => {
-    (async () => {
-      try {
-        setIsLoading(true);
-        console.log("Map: Initializing location...");
-
-        // Check if we already have a current location in the store
-        if (currentLocation) {
-          console.log("Map: Using existing location from store:", currentLocation);
-
-          // Set initial region based on existing location
-          const initialRegion = {
-            latitude: currentLocation.latitude,
-            longitude: currentLocation.longitude,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          };
-          setCurrentRegion(initialRegion);
-
-          setIsLoading(false);
-
-          // Find markers near the user
-          await fetchNearbyMarkers(
-            currentLocation.latitude,
-            currentLocation.longitude,
-            3000
-          );
-
-          return; // Exit early since we have location
-        }
-
-        // If no current location, try to get it using the location service
-        console.log("Map: No current location, requesting fresh location...");
-
-        const locationResult = await getCurrentLocation();
-        if (locationResult) {
-          console.log("Map: Got fresh location:", locationResult);
-
-          // The location service already updates the store, but we need to set region
-          const initialRegion = {
-            latitude: locationResult.coords.latitude,
-            longitude: locationResult.coords.longitude,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          };
-          setCurrentRegion(initialRegion);
-
-          setIsLoading(false);
-
-          // Find markers near the user
-          await fetchNearbyMarkers(
-            locationResult.coords.latitude,
-            locationResult.coords.longitude,
-            3000
-          );
-        } else {
-          setErrorMsg('Could not get your location. Please enable location services and try again.');
-          setIsLoading(false);
-        }
-      } catch (error) {
-        console.log('Error initializing location:', error);
-        setErrorMsg('Could not get your location. Please try again.');
-        setIsLoading(false);
-      }
-    })();
-  }, [currentLocation, fetchNearbyMarkers]);
 
   // Function to fetch nearby markers
   const fetchNearbyMarkers = useCallback(async (
     latitude: number,
     longitude: number,
-    radius: number = 3000
+    radius: number = 2000  // Reduced from 3000 to 2000 meters
   ) => {
     if (isFetchingMarkers) return;
 
     try {
       setIsFetchingMarkers(true);
-      console.log(`Fetching markers near [${latitude}, ${longitude}] with radius ${radius}m`);
       await findNearbyMarkers(radius, { latitude, longitude });
     } catch (error) {
-      console.error('Error fetching nearby markers:', error);
+      // Silent error handling
     } finally {
       setIsFetchingMarkers(false);
     }
   }, [findNearbyMarkers, isFetchingMarkers]);
 
+  useEffect(() => {
+    const initializeLocationAndMap = async () => {
+      try {
+        setIsLoading(true);
+
+        // Get the location store to check for persisted location
+        const locationStore = useLocationStore.getState();
+        let effectiveLocation = locationStore.getPersistedLocation();
+
+        if (effectiveLocation &&
+          (Math.abs(effectiveLocation.latitude) > 0.000001 || Math.abs(effectiveLocation.longitude) > 0.000001)) {
+          // Using persisted location from store
+        } else {
+          // If no valid persisted location, try to get from location hook
+          if (currentLocation &&
+            (Math.abs(currentLocation.latitude) > 0.000001 || Math.abs(currentLocation.longitude) > 0.000001)) {
+            effectiveLocation = currentLocation;
+          } else {
+            // Final fallback to default location
+            effectiveLocation = locationStore.getLastKnownLocation();
+          }
+        }
+
+        if (effectiveLocation) {
+
+          // Set initial region based on effective location
+          const initialRegion = {
+            latitude: effectiveLocation.latitude,
+            longitude: effectiveLocation.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          };
+          setCurrentRegion(initialRegion);
+
+          // Find markers near the location
+          await findNearbyMarkers(3000, {
+            latitude: effectiveLocation.latitude,
+            longitude: effectiveLocation.longitude
+          });
+        } else {
+          setErrorMsg('Could not get your location. Please enable location services and try again.');
+        }
+      } catch (error) {
+        setErrorMsg('Could not get your location. Please try again.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initializeLocationAndMap();
+  }, []); // Only run once on mount
+
+  // Ref to store the timeout ID for debouncing
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Debounced marker fetching to prevent excessive API calls
+  const debouncedFetchMarkers = useCallback((latitude: number, longitude: number, radius: number) => {
+    // Clear previous timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+
+    // Set new timeout
+    debounceTimeoutRef.current = setTimeout(() => {
+      findNearbyMarkers(radius, { latitude, longitude });
+    }, 300); // 300ms debounce
+  }, [findNearbyMarkers]);
+
   // Handle map region changes to fetch new markers
   const handleRegionChangeComplete = useCallback((region: Region) => {
-    setCurrentRegion(region);
+    // Use requestAnimationFrame to prevent blocking the UI
+    requestAnimationFrame(() => {
+      setCurrentRegion(region);
 
-    // Calculate approximate radius based on the visible region
-    // LatitudeDelta of 0.01 is roughly 1.1km, so we use this to estimate the radius
-    const latKm = 111; // 1 degree of latitude is approximately 111km
-    const visibleRadiusInMeters = (region.latitudeDelta * latKm * 1000) / 2;
+      // Calculate approximate radius based on the visible region
+      // LatitudeDelta of 0.01 is roughly 1.1km, so we use this to estimate the radius
+      const latKm = 111; // 1 degree of latitude is approximately 111km
+      const visibleRadiusInMeters = (region.latitudeDelta * latKm * 1000) / 2;
 
-    // Fetch markers for the new region, with a minimum radius of 300m
-    const searchRadius = Math.max(300, Math.round(visibleRadiusInMeters));
-    fetchNearbyMarkers(region.latitude, region.longitude, searchRadius);
-  }, [fetchNearbyMarkers]);
+      // Fetch markers for the new region, with a minimum radius of 300m and maximum of 1500m
+      const searchRadius = Math.max(300, Math.min(1500, Math.round(visibleRadiusInMeters)));
+
+      // Use debounced fetching
+      debouncedFetchMarkers(region.latitude, region.longitude, searchRadius);
+    });
+  }, [debouncedFetchMarkers]);
 
   const zoomToCurrentLocation = useCallback(async () => {
-    if (currentLocation && mapRef.current) {
-      console.log("Zooming to current location:", currentLocation);
-      const region: Region = {
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      };
-      mapRef.current.animateToRegion(region, 1000);
-    } else {
-      // If no current location in store, try to get fresh location
-      console.log("No current location in store, attempting to get fresh location for zoom");
-      const locationResult = await getCurrentLocation();
-      if (locationResult && mapRef.current) {
-        console.log("Got fresh location for zoom:", locationResult);
+    try {
+      // Get the most current location from store
+      const locationStore = useLocationStore.getState();
+      let effectiveLocation = locationStore.getPersistedLocation();
+
+      if (!effectiveLocation ||
+        (Math.abs(effectiveLocation.latitude) < 0.000001 && Math.abs(effectiveLocation.longitude) < 0.000001)) {
+        // If no valid persisted location, try to ensure we have valid location
+        effectiveLocation = await ensureValidLocation();
+
+        if (!effectiveLocation) {
+          // Final fallback to default location
+          effectiveLocation = locationStore.getLastKnownLocation();
+        }
+      }
+
+      if (effectiveLocation && mapRef.current) {
         const region: Region = {
-          latitude: locationResult.coords.latitude,
-          longitude: locationResult.coords.longitude,
+          latitude: effectiveLocation.latitude,
+          longitude: effectiveLocation.longitude,
           latitudeDelta: 0.01,
           longitudeDelta: 0.01,
         };
         mapRef.current.animateToRegion(region, 1000);
       }
+    } catch (error) {
+      // Silent error handling
+    }
+  }, [ensureValidLocation]);
+
+  // Monitor significant location changes and update map region accordingly
+  useEffect(() => {
+    if (currentLocation && currentRegion) {
+      const distanceThreshold = 0.005; // About 500 meters - larger threshold to reduce updates
+
+      if (Math.abs(currentLocation.latitude - currentRegion.latitude) > distanceThreshold ||
+        Math.abs(currentLocation.longitude - currentRegion.longitude) > distanceThreshold) {
+
+        // Use requestAnimationFrame to prevent blocking
+        requestAnimationFrame(() => {
+          const newRegion = {
+            latitude: currentLocation.latitude,
+            longitude: currentLocation.longitude,
+            latitudeDelta: currentRegion?.latitudeDelta || 0.01,
+            longitudeDelta: currentRegion?.longitudeDelta || 0.01,
+          };
+          setCurrentRegion(newRegion);
+
+          // Animate map to the new location
+          if (mapRef.current) {
+            mapRef.current.animateToRegion(newRegion, 1000);
+          }
+        });
+      }
     }
   }, [currentLocation]);
 
-  useEffect(() => {
-    if (currentLocation) {
-      zoomToCurrentLocation();
-    }
-  }, [currentLocation, zoomToCurrentLocation]);
-
-  // Default region used if location is not available
-  const defaultRegion: Region = {
-    latitude: 37.78825,
-    longitude: -122.4324,
-    latitudeDelta: 0.01,
-    longitudeDelta: 0.01,
-  };
-
-  // Format marker callout titles
-  const getMarkerTitle = (marker: Marker): string => {
+  // Format marker callout titles (memoized)
+  const getMarkerTitle = useCallback((marker: Marker): string => {
     const emoji = getObstacleEmoji(marker.obstacleType);
     const type = marker.obstacleType.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
     return `${emoji} ${type}`;
-  };
+  }, []);
 
-  // Format marker descriptions for callouts
-  const getMarkerDescription = (marker: Marker): string => {
+  // Format marker descriptions for callouts (memoized)
+  const getMarkerDescription = useCallback((marker: Marker): string => {
     const severity = marker.obstacleScore >= 4 ? 'High' :
       marker.obstacleScore >= 2 ? 'Medium' : 'Low';
     return `${severity} severity: ${marker.description || 'No description'} - ${formatDistance(0.2, user?.preferences?.preferedUnit)} away`;
-  };
+  }, [user?.preferences?.preferedUnit]);
 
   // Handle refresh of markers when modal closes
   const handleModalClose = useCallback(() => {
@@ -616,20 +675,24 @@ export default function MapScreen() {
 
     // Refresh markers when modal closes using the current region
     if (currentRegion) {
-      fetchNearbyMarkers(
-        currentRegion.latitude,
-        currentRegion.longitude,
-        Math.max(300, Math.round((currentRegion.latitudeDelta * 111 * 1000) / 2))
-      );
-    } else if (currentLocation) {
+      const radius = Math.max(300, Math.round((currentRegion.latitudeDelta * 111 * 1000) / 2));
+      findNearbyMarkers(radius, {
+        latitude: currentRegion.latitude,
+        longitude: currentRegion.longitude
+      });
+    } else {
       // Fallback to user location if no current region
-      fetchNearbyMarkers(
-        currentLocation.latitude,
-        currentLocation.longitude,
-        3000
-      );
+      const locationStore = useLocationStore.getState();
+      const persistedLocation = locationStore.getPersistedLocation();
+
+      if (persistedLocation) {
+        findNearbyMarkers(2000, {
+          latitude: persistedLocation.latitude,
+          longitude: persistedLocation.longitude
+        });
+      }
     }
-  }, [currentRegion, currentLocation, fetchNearbyMarkers]);
+  }, [currentRegion, findNearbyMarkers]);
 
   return (
     <SafeAreaView className={`flex-1 ${isDark ? 'bg-gray-900' : 'bg-white'}`}>
@@ -651,58 +714,30 @@ export default function MapScreen() {
             ref={mapRef}
             style={styles.map}
             provider={PROVIDER_GOOGLE}
-            showsUserLocation={true}
+            showsUserLocation={canShowUserLocation}
             showsMyLocationButton={false}
             showsCompass={true}
             showsScale={true}
-            followsUserLocation={true}
-            initialRegion={currentRegion || defaultRegion}
+            followsUserLocation={canShowUserLocation}
+            userLocationAnnotationTitle="You are here"
+            userLocationPriority="high"
+            initialRegion={initialRegionRef.current}
             onRegionChangeComplete={handleRegionChangeComplete}
             onPoiClick={handlePoiClick}
             onMapReady={handleMapReady}
           >
             {/* Display all obstacle markers from the store with custom icons */}
-            {markers.map((marker, index) => (
-              <MapMarker
+            {visibleMarkers.map((marker, index) => (
+              <OptimizedMarker
                 key={marker.id || `marker-${index}`}
-                coordinate={{
-                  latitude: marker.location.latitude,
-                  longitude: marker.location.longitude,
-                }}
-                title={getMarkerTitle(marker)}
-                description={getMarkerDescription(marker)}
-                onPress={() => handleMarkerPress(marker)}
-                anchor={{ x: 0.5, y: 1.0 }}
-              >
-                <View style={{
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}>
-                  <View style={{
-                    backgroundColor: getObstacleColor(marker.obstacleScore),
-                    borderRadius: 15,
-                    padding: 8,
-                    borderWidth: 1.5,
-                    borderColor: 'white',
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.3,
-                    shadowRadius: 3,
-                    elevation: 5,
-                  }}>
-                    {
-                      getObstacleIcon(marker.obstacleType).name == "stairs" ?
-                        <FontAwesome6 name="stairs" size={18} color={getObstacleIcon(marker.obstacleType).color} />
-                        :
-                        <Ionicons
-                          name={getObstacleIcon(marker.obstacleType).name as any}
-                          size={18}
-                          color={getObstacleIcon(marker.obstacleType).color}
-                        />
-                    }
-                  </View>
-                </View>
-              </MapMarker>
+                marker={marker}
+                index={index}
+                onPress={handleMarkerPress}
+                getMarkerTitle={getMarkerTitle}
+                getMarkerDescription={getMarkerDescription}
+                markerAnchor={markerAnchor}
+                styles={styles}
+              />
             ))}
 
             {/* Display the route polyline if navigating */}
@@ -715,7 +750,7 @@ export default function MapScreen() {
                   strokeColor="#F1B24A"
                   lineCap="round"
                   lineJoin="round"
-                  lineDashPattern={[5, 5]}
+                  lineDashPattern={routeDashPattern}
                 />
 
                 {/* Outer glow effect for better visibility */}
@@ -740,17 +775,10 @@ export default function MapScreen() {
                     <MapMarker
                       key={`routepoint-${index}`}
                       coordinate={coord}
-                      anchor={{ x: 0.5, y: 0.5 }}
+                      anchor={routePointAnchor}
                       tracksViewChanges={false}
                     >
-                      <View style={{
-                        width: 8,
-                        height: 8,
-                        backgroundColor: '#F1B24A',
-                        borderRadius: 4,
-                        borderWidth: 1,
-                        borderColor: 'white',
-                      }} />
+                      <View style={styles.routePoint} />
                     </MapMarker>
                   ))
                 }
@@ -815,9 +843,29 @@ export default function MapScreen() {
           {/* Current location button */}
           <TouchableOpacity
             className={`absolute bottom-8 right-5 rounded-full w-[60px] h-[60px] justify-center items-center shadow-md ${isDark ? 'bg-gray-800' : 'bg-white'}`}
-            onPress={zoomToCurrentLocation}
+            onPress={async () => {
+              if (!hasLocationPermission) {
+                const granted = await requestLocationPermissionsAndRefresh();
+                if (!granted) {
+                  Alert.alert(
+                    'Location Permission Required',
+                    'Please grant location permission to see your current location on the map.',
+                    [{ text: 'OK' }]
+                  );
+                  return;
+                }
+              } else if (!isTrackingEnabled) {
+                await toggleTracking();
+                return;
+              }
+              zoomToCurrentLocation();
+            }}
           >
-            <Ionicons name="locate" size={24} color={isDark ? "#ffffff" : "#333333"} />
+            <Ionicons
+              name={canShowUserLocation ? "locate" : "locate-outline"}
+              size={24}
+              color={canShowUserLocation ? (isDark ? "#ffffff" : "#333333") : "#999999"}
+            />
           </TouchableOpacity>
 
           {/* Navigation info, directions toggle and cancel button */}
@@ -862,17 +910,21 @@ export default function MapScreen() {
           )}
 
           {/* Directions Panel */}
-          {currentLocation && (
-            <DirectionsPanel
-              steps={routeSteps || []}
-              visible={showDirections && isNavigating}
-              onClose={() => setShowDirections(false)}
-              currentLocation={{
-                latitude: currentLocation.latitude,
-                longitude: currentLocation.longitude
-              }}
-            />
-          )}
+          {(() => {
+            const locationStore = useLocationStore.getState();
+            const persistedLocation = locationStore.getPersistedLocation();
+            return persistedLocation && (
+              <DirectionsPanel
+                steps={routeSteps || []}
+                visible={showDirections && isNavigating}
+                onClose={closeDirectionsPanel}
+                currentLocation={{
+                  latitude: persistedLocation.latitude,
+                  longitude: persistedLocation.longitude
+                }}
+              />
+            );
+          })()}
 
           {/* Add marker modal */}
           <AddMarkerModal
@@ -883,20 +935,24 @@ export default function MapScreen() {
           {/* Marker details modal */}
           <MarkerDetailsModal
             visible={detailsModalVisible}
-            onClose={() => setDetailsModalVisible(false)}
+            onClose={closeDetailsModal}
             marker={selectedMarker}
           />
 
           {/* Route confirmation modal */}
           <RouteConfirmationModal
             visible={routeConfirmationModalVisible}
-            onClose={() => setRouteConfirmationModalVisible(false)}
+            onClose={closeRouteConfirmationModal}
             onConfirm={handleRouteConfirmation}
             placeId={selectedPlace?.id || null}
-            originLocation={currentLocation ? {
-              latitude: currentLocation.latitude,
-              longitude: currentLocation.longitude
-            } : null}
+            originLocation={(() => {
+              const locationStore = useLocationStore.getState();
+              const persistedLocation = locationStore.getPersistedLocation();
+              return persistedLocation ? {
+                latitude: persistedLocation.latitude,
+                longitude: persistedLocation.longitude
+              } : null;
+            })()}
           />
 
           {/* Place Details Modal */}
@@ -912,7 +968,7 @@ export default function MapScreen() {
   );
 }
 
-// Only style needed for the map to display properly
+// Styles for the map and markers (memoized to prevent re-creation)
 const styles = StyleSheet.create({
   map: {
     width: Dimensions.get("window").width,
@@ -930,5 +986,23 @@ const styles = StyleSheet.create({
     right: 0,
     padding: 10,
     zIndex: 1000,
+  },
+  markerContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markerIcon: {
+    borderRadius: 12,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: 'white',
+  },
+  routePoint: {
+    width: 8,
+    height: 8,
+    backgroundColor: '#F1B24A',
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'white',
   },
 });

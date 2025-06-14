@@ -1,9 +1,22 @@
-import { GooglePlacesService, GooglePlaceBasic } from "./google-places.service.ts";
+import {
+  GooglePlaceBasic,
+  GooglePlacesService,
+} from "./google-places.service.ts";
 import { UserProfileService } from "./user-profile.service.ts";
-import { RecommendationEngine, RecommendationRequest, ScoredRecommendation } from "./recommendation-engine.service.ts";
-import { AccessibilityEnhancement, EnhancedRecommendation } from "./accessibility-enhancement.service.ts";
-import RecommendationCache, { IRecommendationCache } from "../models/recommendation/recommendation-cache.mongo.ts";
+import {
+  RecommendationEngine,
+  RecommendationRequest,
+  ScoredRecommendation,
+} from "./recommendation-engine.service.ts";
+import {
+  AccessibilityEnhancement,
+  EnhancedRecommendation,
+} from "./accessibility-enhancement.service.ts";
+import RecommendationCache, {
+  IRecommendationCache,
+} from "../models/recommendation/recommendation-cache.mongo.ts";
 import { IUserProfile } from "../models/recommendation/user-profile.mongo.ts";
+import User from "../models/auth/auth.mongo.ts";
 
 export interface OrchestrationRequest {
   userId: string;
@@ -58,8 +71,6 @@ export interface OrchestrationResponse {
   };
 }
 
-
-
 export class RecommendationOrchestrationService {
   private static readonly DEFAULT_SEARCH_RADIUS = 5000; // 5km
   private static readonly DEFAULT_MAX_RESULTS = 20;
@@ -67,87 +78,129 @@ export class RecommendationOrchestrationService {
   private static readonly MAX_CANDIDATE_PLACES = 200;
 
   /**
+   * Convert Budget enum to Google Places price level
+   */
+  private static budgetToPriceLevel(
+    budget: any,
+  ): { minPrice?: number; maxPrice?: number } {
+    switch (budget) {
+      case "FREE":
+        return { maxPrice: 0 };
+      case "LOW":
+        return { maxPrice: 1 };
+      case "MEDIUM":
+        return { maxPrice: 2 };
+      case "HIGH":
+        return { maxPrice: 4 };
+      default:
+        return {}; // No price filtering
+    }
+  }
+
+  /**
    * Main recommendation generation endpoint
    */
-  static async generateRecommendations(request: OrchestrationRequest): Promise<OrchestrationResponse> {
+  static async generateRecommendations(
+    request: OrchestrationRequest,
+  ): Promise<OrchestrationResponse> {
     const startTime = Date.now();
 
     try {
       console.log(`Generating recommendations for user ${request.userId}`);
 
       // Step 1: Get or create user profile
-      const userProfile = await UserProfileService.getOrCreateProfile(request.userId);
-      
+      const userProfile = await UserProfileService.getOrCreateProfile(
+        request.userId,
+      );
+
       if (!userProfile) {
         throw new Error("Failed to create or retrieve user profile");
       }
-      
+
+      // Step 1.5: Get user preferences including budget
+      const user = await User.findById(request.userId);
+      const userBudget = user?.preferences?.budget;
+      const priceConstraints = this.budgetToPriceLevel(userBudget);
+
+      if (priceConstraints.maxPrice !== undefined) {
+        console.log(
+          `Applying budget filter: ${userBudget} (maxPrice: ${priceConstraints.maxPrice})`,
+        );
+      }
+
       // Check if profile needs updating
-      const profileAge = (Date.now() - userProfile.lastUpdated.getTime()) / (1000 * 60 * 60); // hours
-      const profileUpdateNeeded = profileAge > this.PROFILE_UPDATE_THRESHOLD_HOURS;
+      const profileAge = (Date.now() - userProfile.lastUpdated.getTime()) /
+        (1000 * 60 * 60); // hours
+      const profileUpdateNeeded =
+        profileAge > this.PROFILE_UPDATE_THRESHOLD_HOURS;
 
       // Step 2: Generate cache key and check cache (unless force refresh)
-      const cacheKey = this.generateCacheKey(request);
-      
+      const cacheKey = this.generateCacheKey(request, userBudget);
+
       if (!request.forceRefresh) {
         try {
           const cachedResult = await RecommendationCache.findOne({ cacheKey });
-          
+
           if (cachedResult && cachedResult.expiresAt > new Date()) {
             console.log(`Cache hit for key: ${cacheKey}`);
-            
+
             // Update hit count
             await RecommendationCache.updateOne(
               { _id: cachedResult._id },
-              { $inc: { hitCount: 1 }, $set: { lastAccessed: new Date() } }
+              { $inc: { hitCount: 1 }, $set: { lastAccessed: new Date() } },
             );
-            
+
             const executionTime = Date.now() - startTime;
-            
+
             // Convert cached recommendations to ScoredRecommendation format
-            const convertedRecommendations: ScoredRecommendation[] = cachedResult.recommendations.map(rec => ({
-              place: {
-                placeId: rec.placeId,
-                name: rec.placeName,
-                location: {
-                  latitude: rec.location.coordinates[1],
-                  longitude: rec.location.coordinates[0],
+            const convertedRecommendations: ScoredRecommendation[] =
+              cachedResult.recommendations.map((rec) => ({
+                place: {
+                  placeId: rec.placeId,
+                  name: rec.placeName,
+                  location: {
+                    latitude: rec.location.coordinates[1],
+                    longitude: rec.location.coordinates[0],
+                  },
+                  types: rec.placeTypes,
+                  rating: rec.googlePlaceData?.rating,
+                  userRatingsTotal: undefined,
+                  priceLevel: rec.googlePlaceData?.priceLevel,
+                  businessStatus: "OPERATIONAL",
                 },
-                types: rec.placeTypes,
-                rating: rec.googlePlaceData?.rating,
-                userRatingsTotal: undefined,
-                priceLevel: rec.googlePlaceData?.priceLevel,
-                businessStatus: "OPERATIONAL",
-              },
-              score: rec.score,
-              reasoning: rec.reasoning,
-              scoreBreakdown: {
-                categoryScore: 0,
-                locationScore: 0,
-                temporalScore: 0,
-                qualityScore: 0,
-                diversityBonus: 0,
-                contextBonus: 0,
-              },
-              metadata: {
-                distance: 0,
-                matchedCategories: [],
-                temporalCompatibility: 0,
-                userProfileVersion: userProfile.version,
-                modelVersion: "1.0.0",
-              },
-            }));
+                score: rec.score,
+                reasoning: rec.reasoning,
+                scoreBreakdown: {
+                  categoryScore: 0,
+                  locationScore: 0,
+                  temporalScore: 0,
+                  qualityScore: 0,
+                  diversityBonus: 0,
+                  contextBonus: 0,
+                },
+                metadata: {
+                  distance: 0,
+                  matchedCategories: [],
+                  temporalCompatibility: 0,
+                  userProfileVersion: userProfile.version,
+                  modelVersion: "1.0.0",
+                },
+              }));
 
             // Enhance cached recommendations with accessibility data
-            console.log("🔍 Enhancing cached recommendations with accessibility data...");
-            const enhancedCachedRecommendations = await AccessibilityEnhancement.enhanceRecommendations(
-              convertedRecommendations,
-              request.userId
+            console.log(
+              "🔍 Enhancing cached recommendations with accessibility data...",
             );
+            const enhancedCachedRecommendations = await AccessibilityEnhancement
+              .enhanceRecommendations(
+                convertedRecommendations,
+                request.userId,
+              );
 
             // Get accessibility summary for cached recommendations
-            const accessibilitySummary = await AccessibilityEnhancement.getAccessibilitySummary(enhancedCachedRecommendations);
-            
+            const accessibilitySummary = await AccessibilityEnhancement
+              .getAccessibilitySummary(enhancedCachedRecommendations);
+
             return {
               recommendations: enhancedCachedRecommendations,
               metadata: {
@@ -158,9 +211,13 @@ export class RecommendationOrchestrationService {
                 totalCandidates: cachedResult.recommendations.length,
                 userStats: {
                   totalVisits: userProfile.totalVisits,
-                  profileCompleteness: this.calculateProfileCompleteness(userProfile),
+                  profileCompleteness: this.calculateProfileCompleteness(
+                    userProfile,
+                  ),
                   topCategories: (userProfile as any).getTopCategories(3),
-                  recommendationHistory: await this.getRecommendationHistory(request.userId),
+                  recommendationHistory: await this.getRecommendationHistory(
+                    request.userId,
+                  ),
                 },
                 accessibilitySummary,
               },
@@ -180,7 +237,9 @@ export class RecommendationOrchestrationService {
 
       // Step 3: Update user profile if needed
       if (profileUpdateNeeded) {
-        console.log(`Updating user profile (age: ${profileAge.toFixed(1)} hours)`);
+        console.log(
+          `Updating user profile (age: ${profileAge.toFixed(1)} hours)`,
+        );
         try {
           await UserProfileService.buildProfile(request.userId);
         } catch (error) {
@@ -189,7 +248,11 @@ export class RecommendationOrchestrationService {
       }
 
       // Step 4: Get candidate places from Google Places API
-      const candidatePlaces = await this.getCandidatePlaces(request, userProfile);
+      const candidatePlaces = await this.getCandidatePlaces(
+        request,
+        userProfile,
+        priceConstraints,
+      );
       console.log(`Found ${candidatePlaces.length} candidate places`);
 
       // Step 5: Generate recommendations using ML engine
@@ -213,17 +276,20 @@ export class RecommendationOrchestrationService {
         },
       };
 
-      const recommendationResult = await RecommendationEngine.generateRecommendations(recommendationRequest);
+      const recommendationResult = await RecommendationEngine
+        .generateRecommendations(recommendationRequest);
 
       // Step 6: Enhance recommendations with accessibility data
       console.log("🔍 Enhancing recommendations with accessibility data...");
-      const enhancedRecommendations = await AccessibilityEnhancement.enhanceRecommendations(
-        recommendationResult.recommendations,
-        request.userId
-      );
+      const enhancedRecommendations = await AccessibilityEnhancement
+        .enhanceRecommendations(
+          recommendationResult.recommendations,
+          request.userId,
+        );
 
       // Get accessibility summary for metadata
-      const accessibilitySummary = await AccessibilityEnhancement.getAccessibilitySummary(enhancedRecommendations);
+      const accessibilitySummary = await AccessibilityEnhancement
+        .getAccessibilitySummary(enhancedRecommendations);
 
       // Step 7: Cache the enhanced results
       await this.cacheRecommendations(
@@ -231,7 +297,7 @@ export class RecommendationOrchestrationService {
         recommendationResult.recommendations, // Cache original recommendations to avoid schema changes
         candidatePlaces.length,
         request.userId,
-        request.location
+        request.location,
       );
 
       const executionTime = Date.now() - startTime;
@@ -248,8 +314,11 @@ export class RecommendationOrchestrationService {
           userStats: {
             totalVisits: userProfile.totalVisits,
             profileCompleteness: this.calculateProfileCompleteness(userProfile),
-            topCategories: recommendationResult.metadata.userProfileStats.topCategories,
-            recommendationHistory: await this.getRecommendationHistory(request.userId),
+            topCategories:
+              recommendationResult.metadata.userProfileStats.topCategories,
+            recommendationHistory: await this.getRecommendationHistory(
+              request.userId,
+            ),
           },
           accessibilitySummary,
         },
@@ -261,14 +330,13 @@ export class RecommendationOrchestrationService {
           accessibilityEnhanced: true,
         },
       };
-
     } catch (error) {
       console.error("Error in recommendation orchestration:", error);
-      throw new Error(`Recommendation orchestration failed: ${(error as Error).message}`);
+      throw new Error(
+        `Recommendation orchestration failed: ${(error as Error).message}`,
+      );
     }
   }
-
-
 
   /**
    * Get recommendation analytics for a user
@@ -287,7 +355,7 @@ export class RecommendationOrchestrationService {
     try {
       // Get user profile
       const userProfile = await UserProfileService.getOrCreateProfile(userId);
-      
+
       if (!userProfile) {
         throw new Error("User profile not found");
       }
@@ -306,10 +374,11 @@ export class RecommendationOrchestrationService {
           categoryDiversity: userProfile.categoryPreferences.size,
         },
       };
-
     } catch (error) {
       console.error("Error getting recommendation analytics:", error);
-      throw new Error(`Analytics retrieval failed: ${(error as Error).message}`);
+      throw new Error(
+        `Analytics retrieval failed: ${(error as Error).message}`,
+      );
     }
   }
 
@@ -318,17 +387,21 @@ export class RecommendationOrchestrationService {
   /**
    * Generate cache key for request
    */
-  private static generateCacheKey(request: OrchestrationRequest): string {
+  private static generateCacheKey(
+    request: OrchestrationRequest,
+    userBudget?: any,
+  ): string {
     const { latitude, longitude } = request.location;
     const roundedLat = Math.round(latitude * 1000) / 1000; // ~100m precision
     const roundedLng = Math.round(longitude * 1000) / 1000;
-    
+
     const radius = request.searchRadius || this.DEFAULT_SEARCH_RADIUS;
     const maxResults = request.maxResults || this.DEFAULT_MAX_RESULTS;
     const categories = (request.categories || []).sort().join(",");
     const query = request.searchQuery || "";
-    
-    return `rec_${request.userId}_${roundedLat}_${roundedLng}_${radius}_${maxResults}_${categories}_${query}`;
+    const budget = userBudget || "ANY";
+
+    return `rec_${request.userId}_${roundedLat}_${roundedLng}_${radius}_${maxResults}_${categories}_${query}_${budget}`;
   }
 
   /**
@@ -336,10 +409,11 @@ export class RecommendationOrchestrationService {
    */
   private static async getCandidatePlaces(
     request: OrchestrationRequest,
-    userProfile: IUserProfile
+    userProfile: IUserProfile,
+    priceConstraints?: { minPrice?: number; maxPrice?: number },
   ): Promise<GooglePlaceBasic[]> {
     const { location, searchRadius = this.DEFAULT_SEARCH_RADIUS } = request;
-    
+
     let candidatePlaces: GooglePlaceBasic[] = [];
 
     try {
@@ -351,7 +425,7 @@ export class RecommendationOrchestrationService {
           radius: searchRadius,
           maxResults: 50,
         });
-        
+
         candidatePlaces.push(...textSearchPlaces);
       }
 
@@ -361,13 +435,14 @@ export class RecommendationOrchestrationService {
         radius: searchRadius,
         types: request.categories,
         maxResults: 100,
+        ...priceConstraints, // Spread the minPrice/maxPrice if they exist
       });
-      
+
       candidatePlaces.push(...nearbyPlaces);
 
       // Remove duplicates based on placeId
       const uniquePlaces = candidatePlaces.reduce((acc, place) => {
-        if (!acc.some(p => p.placeId === place.placeId)) {
+        if (!acc.some((p) => p.placeId === place.placeId)) {
           acc.push(place);
         }
         return acc;
@@ -375,7 +450,6 @@ export class RecommendationOrchestrationService {
 
       // Limit to max candidates
       return uniquePlaces.slice(0, this.MAX_CANDIDATE_PLACES);
-
     } catch (error) {
       console.error("Error getting candidate places:", error);
       // Return any partial results
@@ -391,20 +465,23 @@ export class RecommendationOrchestrationService {
     recommendations: ScoredRecommendation[],
     totalCandidates: number,
     userId: string,
-    location: { latitude: number; longitude: number }
+    location: { latitude: number; longitude: number },
   ): Promise<void> {
     try {
       // Delete existing cache entry
       await RecommendationCache.deleteOne({ cacheKey });
 
       // Transform recommendations to cache format
-      const cacheRecommendations = recommendations.map(rec => ({
+      const cacheRecommendations = recommendations.map((rec) => ({
         placeId: rec.place.placeId,
         placeName: rec.place.name,
         placeTypes: rec.place.types,
         location: {
           type: "Point",
-          coordinates: [rec.place.location.longitude, rec.place.location.latitude],
+          coordinates: [
+            rec.place.location.longitude,
+            rec.place.location.latitude,
+          ],
         },
         score: rec.score,
         reasoning: rec.reasoning,
@@ -437,8 +514,9 @@ export class RecommendationOrchestrationService {
       });
 
       await cacheEntry.save();
-      console.log(`Cached ${recommendations.length} recommendations with key: ${cacheKey}`);
-
+      console.log(
+        `Cached ${recommendations.length} recommendations with key: ${cacheKey}`,
+      );
     } catch (error) {
       console.error("Error caching recommendations:", error);
       // Don't throw - caching failures shouldn't break the flow
@@ -448,7 +526,9 @@ export class RecommendationOrchestrationService {
   /**
    * Calculate profile completeness score
    */
-  private static calculateProfileCompleteness(userProfile: IUserProfile): number {
+  private static calculateProfileCompleteness(
+    userProfile: IUserProfile,
+  ): number {
     let score = 0;
     let maxScore = 0;
 
@@ -461,12 +541,16 @@ export class RecommendationOrchestrationService {
     // Location preferences (30% weight)
     maxScore += 0.3;
     if (userProfile.locationPreferences.frequentAreas.length > 0) {
-      score += Math.min(0.3, userProfile.locationPreferences.frequentAreas.length / 5 * 0.3);
+      score += Math.min(
+        0.3,
+        userProfile.locationPreferences.frequentAreas.length / 5 * 0.3,
+      );
     }
 
     // Temporal patterns (20% weight)
     maxScore += 0.2;
-    const hourActivity = userProfile.temporalPreferences.hourOfDay.filter(h => h > 0).length;
+    const hourActivity =
+      userProfile.temporalPreferences.hourOfDay.filter((h) => h > 0).length;
     if (hourActivity > 0) {
       score += Math.min(0.2, hourActivity / 24 * 0.2);
     }
@@ -483,7 +567,9 @@ export class RecommendationOrchestrationService {
   /**
    * Get recommendation history count
    */
-  private static async getRecommendationHistory(userId: string): Promise<number> {
+  private static async getRecommendationHistory(
+    userId: string,
+  ): Promise<number> {
     try {
       const count = await RecommendationCache.countDocuments({ userId });
       return count;
@@ -496,13 +582,17 @@ export class RecommendationOrchestrationService {
   /**
    * Identify candidate sources for debugging
    */
-  private static async identifyCandidateSources(request: OrchestrationRequest): Promise<string[]> {
+  private static async identifyCandidateSources(
+    request: OrchestrationRequest,
+  ): Promise<string[]> {
     const sources: string[] = [];
-    
+
     if (request.searchQuery) sources.push("text_search");
-    if (request.categories && request.categories.length > 0) sources.push("category_filter");
+    if (request.categories && request.categories.length > 0) {
+      sources.push("category_filter");
+    }
     sources.push("nearby_search");
-    
+
     return sources;
   }
 
@@ -531,23 +621,25 @@ export class RecommendationOrchestrationService {
     };
   }> {
     const services: Record<string, boolean> = {};
-    
+
     try {
       // Check database connections
       const cacheCount = await RecommendationCache.countDocuments();
       services.database = true;
       services.googlePlaces = true; // Assume healthy for now
-      
+
       // Get basic metrics
       const metrics = {
         activeCacheEntries: cacheCount,
-        totalUsers: await RecommendationCache.distinct("userId").then(users => users.length),
+        totalUsers: await RecommendationCache.distinct("userId").then((users) =>
+          users.length
+        ),
         avgResponseTime: 0, // Could be calculated from cache metadata
       };
 
       const healthyServices = Object.values(services).filter(Boolean).length;
       const totalServices = Object.keys(services).length;
-      
+
       let status: "healthy" | "degraded" | "unhealthy";
       if (healthyServices === totalServices) {
         status = "healthy";
@@ -558,7 +650,6 @@ export class RecommendationOrchestrationService {
       }
 
       return { status, services, metrics };
-
     } catch (error) {
       console.error("Health check failed:", error);
       return {
@@ -568,4 +659,4 @@ export class RecommendationOrchestrationService {
       };
     }
   }
-} 
+}

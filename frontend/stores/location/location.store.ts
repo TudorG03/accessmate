@@ -66,7 +66,10 @@ export const useLocationStore = create<LocationState>()(
                     "📍 Location Store: Setting current location:",
                     location,
                 );
-                set({ currentLocation: location });
+                set({
+                    currentLocation: location,
+                    lastLocationUpdateTime: new Date(),
+                });
             },
 
             setLastLocationUpdateTime: (time) => {
@@ -117,7 +120,7 @@ export const useLocationStore = create<LocationState>()(
                     const cooldownPeriod = 10 * 60 * 1000; // 10 minutes in milliseconds
                     const timestamps = get().processedTimestamps;
 
-                    if (!timestamps) {
+                    if (!timestamps || Object.keys(timestamps).length === 0) {
                         return; // No timestamps to clear
                     }
 
@@ -127,6 +130,16 @@ export const useLocationStore = create<LocationState>()(
                     // Find expired markers
                     Object.entries(currentTimestamps).forEach(
                         ([markerId, timestamp]) => {
+                            if (
+                                typeof timestamp !== "number" ||
+                                isNaN(timestamp)
+                            ) {
+                                // Handle corrupted timestamp data
+                                expiredMarkerIds.push(markerId);
+                                delete currentTimestamps[markerId];
+                                return;
+                            }
+
                             if (now - timestamp >= cooldownPeriod) {
                                 expiredMarkerIds.push(markerId);
                                 delete currentTimestamps[markerId];
@@ -138,13 +151,23 @@ export const useLocationStore = create<LocationState>()(
                     if (expiredMarkerIds.length > 0) {
                         console.log(
                             `🕒 Clearing ${expiredMarkerIds.length} expired markers from cooldown`,
+                            expiredMarkerIds.slice(0, 3).map((id) =>
+                                id.substring(0, 8)
+                            ), // Log first 3 marker IDs (truncated)
                         );
                         set({
                             processedTimestamps: currentTimestamps,
                         });
+                    } else {
+                        console.log("🕒 No expired markers to clear");
                     }
                 } catch (error) {
                     console.error("❌ Error clearing expired markers:", error);
+                    // In case of error, reset the processed markers to prevent stuck state
+                    console.log("🔄 Resetting processed markers due to error");
+                    set({
+                        processedTimestamps: {},
+                    });
                 }
             },
 
@@ -188,17 +211,14 @@ export const useLocationStore = create<LocationState>()(
             getPersistedLocation: () => {
                 const currentLocation = get().currentLocation;
 
-                // Check if this is a valid persisted location (not the default)
+                // If we have any location that's not null/undefined, return it
+                // This ensures GPS updates from background task are properly recognized
                 if (
                     currentLocation &&
-                    !(Math.abs(
-                                currentLocation.latitude -
-                                    DEFAULT_LOCATION.latitude,
-                            ) < 0.000001 &&
-                        Math.abs(
-                                currentLocation.longitude -
-                                    DEFAULT_LOCATION.longitude,
-                            ) < 0.000001)
+                    typeof currentLocation.latitude === "number" &&
+                    typeof currentLocation.longitude === "number" &&
+                    !isNaN(currentLocation.latitude) &&
+                    !isNaN(currentLocation.longitude)
                 ) {
                     return currentLocation;
                 }
@@ -210,14 +230,10 @@ export const useLocationStore = create<LocationState>()(
             hasValidPersistedLocation: () => {
                 const currentLocation = get().currentLocation;
                 return currentLocation !== null &&
-                    !(Math.abs(
-                                currentLocation.latitude -
-                                    DEFAULT_LOCATION.latitude,
-                            ) < 0.000001 &&
-                        Math.abs(
-                                currentLocation.longitude -
-                                    DEFAULT_LOCATION.longitude,
-                            ) < 0.000001);
+                    typeof currentLocation.latitude === "number" &&
+                    typeof currentLocation.longitude === "number" &&
+                    !isNaN(currentLocation.latitude) &&
+                    !isNaN(currentLocation.longitude);
             },
 
             // Clear the persisted location for testing

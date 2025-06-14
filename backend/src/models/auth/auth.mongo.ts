@@ -7,9 +7,8 @@ export enum UserRole {
 }
 
 export enum TransportMethod {
-  WALKING = "walking",
   WHEELCHAIR = "wheelchair",
-  PUBLIC_TRANSPORT = "public_transport",
+  WALKING = "walking",
   CAR = "car",
 }
 

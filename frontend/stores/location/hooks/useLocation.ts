@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Alert } from "react-native";
 import { useLocationStore } from "../location.store";
-import {
-    getCurrentLocation,
-    requestLocationPermissions,
-    startLocationTracking,
-    stopLocationTracking,
-} from "@/services/location.service";
+import { getCurrentLocation } from "@/services/location.service";
+import { trackingManager } from "@/services/tracking-manager.service";
+import { getLocationConfig } from "@/config/location.config";
+
+// Get configuration instance
+const config = getLocationConfig();
 
 export function useLocation() {
     const {
@@ -62,26 +62,64 @@ export function useLocation() {
         return getLastKnownLocation(); // This will return the default location
     }, [hasValidPersistedLocation, getPersistedLocation, getLastKnownLocation]);
 
-    // Initialize location tracking and notifications
+    // Initialize TrackingManager-only location system
     const initialize = useCallback(async () => {
         setIsInitializing(true);
         try {
-            // Request location permissions
-            const locationPermissionGranted =
-                await requestLocationPermissions();
-            if (!locationPermissionGranted) {
+            console.log(
+                "🔄 useLocation: Initializing TrackingManager-only location system...",
+            );
+
+            // Initialize TrackingManager (no fallback)
+            const trackingInitialized = await trackingManager.initialize();
+            if (!trackingInitialized) {
+                console.error(
+                    "❌ useLocation: TrackingManager initialization failed",
+                );
+                setIsInitializing(false);
+
+                // Show user-friendly error message
                 Alert.alert(
-                    "Location Permission Required",
-                    "This app needs location access to notify you about nearby obstacles. Please grant location permission in your device settings.",
+                    "Location Setup Issue",
+                    "Location tracking couldn't be started automatically. Please check permissions and try enabling it manually in settings.",
                     [{ text: "OK" }],
                 );
-                setIsTrackingEnabled(false);
-                setIsInitializing(false);
                 return false;
             }
 
-            // Note: Notifications are now initialized by ObstacleValidationWrapper
-            // to ensure proper coordination with the modal system
+            console.log("✅ useLocation: TrackingManager initialized");
+
+            // Auto-start tracking if it's enabled in store but not actually running
+            if (isTrackingEnabled) {
+                console.log(
+                    "🚀 useLocation: Auto-starting tracking (enabled in store)",
+                );
+                const started = await trackingManager.startTracking();
+                if (started) {
+                    console.log("✅ useLocation: Auto-start successful");
+                } else {
+                    console.warn(
+                        "⚠️ useLocation: Auto-start failed, but continuing",
+                    );
+                }
+            } else {
+                // If tracking is disabled in store, enable it by default and start it
+                console.log(
+                    "🔄 useLocation: Enabling tracking by default and starting",
+                );
+                setIsTrackingEnabled(true);
+                const started = await trackingManager.startTracking();
+                if (started) {
+                    console.log(
+                        "✅ useLocation: Default tracking start successful",
+                    );
+                } else {
+                    console.warn(
+                        "⚠️ useLocation: Default tracking start failed",
+                    );
+                    // Don't disable tracking flag, let user manually try later
+                }
+            }
 
             // Ensure we have a valid location
             await ensureValidLocation();
@@ -89,36 +127,48 @@ export function useLocation() {
             // Clear expired processed markers
             clearExpiredProcessedMarkers();
 
-            // Start location tracking if enabled
-            if (isTrackingEnabled) {
-                await startLocationTracking();
-            }
-
+            console.log(
+                "✅ useLocation: TrackingManager-only initialization complete",
+            );
             return true;
         } catch (error) {
-            console.error("Error initializing location tracking:", error);
+            console.error(
+                "❌ useLocation: Error during initialization:",
+                error,
+            );
+
+            // Show user-friendly error for unexpected failures
+            Alert.alert(
+                "Location Error",
+                "An unexpected error occurred while setting up location tracking. Please try again.",
+                [{ text: "OK" }],
+            );
             return false;
         } finally {
             setIsInitializing(false);
         }
     }, [
-        isTrackingEnabled,
-        setIsTrackingEnabled,
         clearExpiredProcessedMarkers,
         ensureValidLocation,
+        isTrackingEnabled,
+        setIsTrackingEnabled,
     ]);
 
-    // Toggle location tracking
+    // Toggle location tracking (TrackingManager-only)
     const toggleTracking = useCallback(async () => {
         try {
+            // Use TrackingManager for enhanced tracking control
             if (isTrackingEnabled) {
-                await stopLocationTracking();
-                setIsTrackingEnabled(false);
+                const stopped = await trackingManager.stopTracking();
+                if (stopped) {
+                    setIsTrackingEnabled(false);
+                    console.log("✅ useLocation: TrackingManager stopped");
+                }
             } else {
-                const permissionGranted = await requestLocationPermissions();
-                if (permissionGranted) {
-                    await startLocationTracking();
+                const started = await trackingManager.startTracking();
+                if (started) {
                     setIsTrackingEnabled(true);
+                    console.log("✅ useLocation: TrackingManager started");
                 } else {
                     Alert.alert(
                         "Location Permission Required",
@@ -129,7 +179,7 @@ export function useLocation() {
             }
             return isTrackingEnabled;
         } catch (error) {
-            console.error("Error toggling location tracking:", error);
+            console.error("❌ useLocation: Error toggling tracking:", error);
             return isTrackingEnabled;
         }
     }, [isTrackingEnabled, setIsTrackingEnabled]);
@@ -143,6 +193,51 @@ export function useLocation() {
     const clearAllProcessedMarkers = useCallback(() => {
         resetProcessedMarkers();
     }, [resetProcessedMarkers]);
+
+    // Manual retry function for failed tracking initialization
+    const retryTracking = useCallback(async () => {
+        console.log("🔄 useLocation: Manual retry of tracking initialization");
+        setIsInitializing(true);
+        try {
+            // Try to reinitialize TrackingManager
+            const trackingInitialized = await trackingManager.initialize();
+            if (trackingInitialized) {
+                // Try to start tracking
+                const started = await trackingManager.startTracking();
+                if (started) {
+                    setIsTrackingEnabled(true);
+                    Alert.alert(
+                        "Success",
+                        "Location tracking has been enabled successfully!",
+                        [{ text: "OK" }],
+                    );
+                    return true;
+                } else {
+                    Alert.alert(
+                        "Partial Success",
+                        "Location system is ready, but tracking couldn't start. Please check permissions.",
+                        [{ text: "OK" }],
+                    );
+                }
+            } else {
+                Alert.alert(
+                    "Still Having Issues",
+                    "Please check your location permissions in device settings and try again.",
+                    [{ text: "OK" }],
+                );
+            }
+        } catch (error) {
+            console.error("❌ useLocation: Retry failed:", error);
+            Alert.alert(
+                "Retry Failed",
+                "Unable to start location tracking. Please check permissions and try again later.",
+                [{ text: "OK" }],
+            );
+        } finally {
+            setIsInitializing(false);
+        }
+        return false;
+    }, [setIsTrackingEnabled]);
 
     // Initialize on component mount
     useEffect(() => {
@@ -172,5 +267,6 @@ export function useLocation() {
         updateCheckRadius,
         clearAllProcessedMarkers,
         ensureValidLocation,
+        retryTracking,
     };
 }

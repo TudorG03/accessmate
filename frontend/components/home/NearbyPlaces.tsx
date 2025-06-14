@@ -349,6 +349,15 @@ const NearbyPlaces = () => {
                     }
                 </Text>
             </View>
+
+            {/* Mock data indicator - only show when using fallback data */}
+            {isMockData && (
+                <View className={`mb-3 p-2 rounded-lg ${isDark ? 'bg-yellow-900/20 border border-yellow-700/30' : 'bg-yellow-50 border border-yellow-200'}`}>
+                    <Text className={`text-xs ${isDark ? 'text-yellow-300' : 'text-yellow-700'}`}>
+                        📡 Limited connectivity - showing sample places. Check your connection for real-time data.
+                    </Text>
+                </View>
+            )}
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 {places.map((place) => (
                     <TouchableOpacity

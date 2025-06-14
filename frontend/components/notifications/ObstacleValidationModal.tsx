@@ -9,6 +9,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/stores/theme/useTheme';
+import { getNotificationConfig } from '@/config/notification.config';
+
+// Get configuration instance
+const config = getNotificationConfig();
 
 interface ObstacleValidationModalProps {
     visible: boolean;
@@ -30,10 +34,8 @@ const ObstacleValidationModal: React.FC<ObstacleValidationModalProps> = ({
     const { colors, isDark } = useTheme();
     const { height } = useWindowDimensions();
 
-    // Format the obstacle type name for display
-    const obstacleTypeName = obstacleType
-        .replace(/_/g, " ")
-        .replace(/\b\w/g, (char) => char.toUpperCase());
+    // Format the obstacle type name for display using config
+    const obstacleTypeName = config.formatObstacleType(obstacleType);
 
     // Get emoji based on obstacle type
     const getObstacleEmoji = (type: string) => {
@@ -172,8 +174,8 @@ const ObstacleValidationModal: React.FC<ObstacleValidationModalProps> = ({
                         <TouchableOpacity
                             onPress={() => handleValidation(null)}
                             className={`border-2 rounded-2xl py-4 px-6 flex-row items-center justify-center ${isDark
-                                    ? 'border-gray-600 bg-gray-700'
-                                    : 'border-gray-300 bg-gray-50'
+                                ? 'border-gray-600 bg-gray-700'
+                                : 'border-gray-300 bg-gray-50'
                                 }`}
                         >
                             <Ionicons

@@ -147,7 +147,7 @@ export const useMarker = () => {
      * Find markers near the specified location or user's current location
      */
     const findNearbyMarkers = useCallback(
-        async (radiusInMeters = 300, customLocation?: MarkerLocation) => {
+        async (radiusInMeters = 500, customLocation?: MarkerLocation) => {
             try {
                 // If custom location is provided, use it
                 if (customLocation) {

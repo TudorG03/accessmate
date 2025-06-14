@@ -9,26 +9,17 @@ let notificationSubscription: Notifications.Subscription | null = null;
 export function addNotificationResponseListener(
     listener: (response: Notifications.NotificationResponse) => void,
 ): Notifications.Subscription {
-    console.log("🔔 Adding notification response listener");
-    
-    // Wrap the listener with additional logging
     const wrappedListener = (response: Notifications.NotificationResponse) => {
-        console.log("🔔 ==========================================");
-        console.log("🔔 NOTIFICATION EVENT RECEIVED!");
-        console.log("🔔 ==========================================");
-        console.log("🔔 Notification ID:", response.notification.request.identifier);
-        console.log("🔔 Action identifier:", response.actionIdentifier);
-        console.log("🔔 User input:", response.userText);
-        console.log("🔔 Calling original handler...");
-        
         try {
             listener(response);
         } catch (error) {
-            console.error("❌ Error in notification listener:", error);
+            // Silent error handling
         }
     };
-    
-    return Notifications.addNotificationResponseReceivedListener(wrappedListener);
+
+    return Notifications.addNotificationResponseReceivedListener(
+        wrappedListener,
+    );
 }
 
 /**
@@ -37,7 +28,6 @@ export function addNotificationResponseListener(
 export function removeNotificationListener(
     subscription: Notifications.Subscription,
 ): void {
-    console.log("🔔 Removing notification listener");
     Notifications.removeNotificationSubscription(subscription);
 }
 
@@ -52,7 +42,6 @@ export function initializeNotificationListeners(
 
     // Add a listener for notification taps
     notificationSubscription = addNotificationResponseListener(handler);
-    console.log("✅ Notification response handler initialized");
 }
 
 /**
@@ -62,7 +51,6 @@ export function cleanupNotificationListeners(): void {
     if (notificationSubscription) {
         removeNotificationListener(notificationSubscription);
         notificationSubscription = null;
-        console.log("🧹 Notification response handler cleaned up");
     }
 }
 
@@ -70,7 +58,5 @@ export function cleanupNotificationListeners(): void {
  * Check if notification listeners are active
  */
 export function areNotificationListenersActive(): boolean {
-    const isActive = notificationSubscription !== null;
-    console.log("🔔 Notification listeners active:", isActive);
-    return isActive;
-} 
+    return notificationSubscription !== null;
+}

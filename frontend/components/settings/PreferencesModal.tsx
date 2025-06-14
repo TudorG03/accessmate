@@ -8,6 +8,8 @@ import useAuth from "@/stores/auth/hooks/useAuth";
 import api from "@/services/api.service";
 import LocationSearchBar from "@/components/location/LocationSearchBar";
 import { validateSearchRadius, validateNumericInput, sanitizeInput } from '@/utils/validation.utils';
+import { LocationTrackingToggle } from './LocationTrackingToggle';
+
 
 interface PreferencesModalProps {
     visible: boolean;
@@ -21,7 +23,7 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
 
     // Initialize preferences from user data
     const [activityTypes, setActivityTypes] = useState<PlaceType[]>([]);
-    const [transportMethod, setTransportMethod] = useState<TransportMethod>(TransportMethod.WALKING);
+    const [transportMethod, setTransportMethod] = useState<TransportMethod>(TransportMethod.WHEELCHAIR);
     const [budget, setBudget] = useState<Budget>(Budget.MEDIUM);
     const [location, setLocation] = useState({ latitude: 0, longitude: 0 });
     const [locationName, setLocationName] = useState<string>('');
@@ -64,7 +66,7 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
     useEffect(() => {
         if (user?.preferences) {
             setActivityTypes(user.preferences.activityTypes || []);
-            setTransportMethod(user.preferences.transportMethod || TransportMethod.WALKING);
+            setTransportMethod(user.preferences.transportMethod || TransportMethod.WHEELCHAIR);
             setBudget(user.preferences.budget || Budget.MEDIUM);
             setLocation(user.preferences.baseLocation || { latitude: 0, longitude: 0 });
             setLocationName(''); // Will be set when location is selected
@@ -291,9 +293,8 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
                                     dropdownIconColor={colors.text}
                                     style={[{ color: colors.text }, styles.input]}
                                 >
-                                    <Picker.Item key="walking" label="Walking" value={TransportMethod.WALKING} />
                                     <Picker.Item key="wheelchair" label="Wheelchair" value={TransportMethod.WHEELCHAIR} />
-                                    <Picker.Item key="public_transport" label="Public Transport" value={TransportMethod.PUBLIC_TRANSPORT} />
+                                    <Picker.Item key="walking" label="Walking" value={TransportMethod.WALKING} />
                                     <Picker.Item key="car" label="Car" value={TransportMethod.CAR} />
                                 </Picker>
                             </View>
@@ -315,6 +316,9 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
                                     <Picker.Item key="high" label="High" value={Budget.HIGH} />
                                 </Picker>
                             </View>
+                            <Text style={{ color: colors.secondaryText, fontSize: 12, marginTop: 4 }}>
+                                This filters recommendations based on Google's price level data
+                            </Text>
                         </View>
 
                         {/* Location Search Bar */}
@@ -407,6 +411,14 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
                                 />
                             </View>
                         </View>
+
+                        {/* Location Tracking Settings */}
+                        <View className="mb-6">
+                            <Text className="text-lg font-bold mb-4" style={styles.text}>Location Tracking</Text>
+                            <LocationTrackingToggle />
+                        </View>
+
+
 
                         {/* Save Button */}
                         <Pressable

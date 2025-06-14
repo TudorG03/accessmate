@@ -1,12 +1,16 @@
 import React, { useEffect } from 'react';
 import { useLocation } from '@/stores/location/hooks/useLocation';
-import { getCurrentLocation, startLocationTracking } from '@/services/location.service';
 import { useLocationStore } from '@/stores/location/location.store';
-import { initializeLocationNotifications } from '@/services/location-notifications.service';
+
+import { trackingManager } from '@/services/tracking-manager.service';
+import { getLocationConfig } from '@/config/location.config';
 
 interface LocationProviderProps {
     children: React.ReactNode;
 }
+
+// Get configuration instance
+const config = getLocationConfig();
 
 export function LocationProvider({ children }: LocationProviderProps) {
     const { ensureValidLocation } = useLocation();
@@ -15,62 +19,47 @@ export function LocationProvider({ children }: LocationProviderProps) {
     useEffect(() => {
         const initializeLocationAndTracking = async () => {
             try {
-                console.log('🌍 LocationProvider: Starting background location initialization and tracking...');
+                console.log('🌍 LocationProvider: Starting location system initialization...');
 
-                // Step 1: Get initial current location to ensure we have up-to-date position
-                console.log('🌍 LocationProvider: Fetching current GPS location in background...');
+                // TrackingManager-Only Mode (Migration Complete)
+                console.log('🚀 LocationProvider: Running in TrackingManager-Only Mode');
 
-                // Try to get current location
-                const location = await getCurrentLocation();
+                console.log('✅ LocationProvider: Configuration loaded');
 
-                if (location) {
-                    console.log('✅ LocationProvider: Successfully got fresh GPS location:', location.coords);
-                } else {
-                    console.log('⚠️ LocationProvider: Could not get GPS location, checking for persisted location...');
+                // Initialize TrackingManager (no fallback)
+                const trackingInitialized = await trackingManager.initialize();
 
-                    // If GPS fails, check if we have persisted location as fallback
-                    if (hasValidPersistedLocation()) {
-                        console.log('✅ LocationProvider: Using persisted location as fallback');
-                    } else {
-                        console.log('⚠️ LocationProvider: No persisted location either, will use default');
-                    }
+                if (!trackingInitialized) {
+                    console.error('❌ LocationProvider: TrackingManager initialization failed in strict mode');
+                    throw new Error('TrackingManager initialization failed - no fallback available');
                 }
 
-                // Step 2: Ensure we have a valid location (this will set default if needed)
+                console.log('✅ LocationProvider: TrackingManager initialized successfully');
+
+                // Ensure we have a valid location
                 await ensureValidLocation();
+                console.log('✅ LocationProvider: Valid location ensured');
 
-                // Step 3: Start continuous location tracking for notification system
-                console.log('🌍 LocationProvider: Starting continuous location tracking for notifications...');
-                const trackingStarted = await startLocationTracking();
+                // Location-based notifications have been removed - only validation notifications remain
 
-                if (trackingStarted) {
-                    console.log('✅ LocationProvider: Continuous location tracking started successfully');
-                } else {
-                    console.log('⚠️ LocationProvider: Failed to start location tracking, notifications may not work optimally');
-                }
+                // System ready - TrackingManager fully operational
+                console.log('🎉 LocationProvider: MIGRATION COMPLETE - System fully operational!');
+                console.log('📊 LocationProvider: Enhanced features active:');
+                console.log('  ✅ App state monitoring');
+                console.log('  ✅ Authentication integration');
+                console.log('  ✅ Background tracking recovery');
+                console.log('  ✅ Centralized resource management');
+                console.log('🏆 LocationProvider: TrackingManager is now the primary location system');
 
-                // Step 4: Initialize location-based notification system
-                console.log('🌍 LocationProvider: Initializing location-based notification system...');
-                const notificationsInitialized = await initializeLocationNotifications();
-
-                if (notificationsInitialized) {
-                    console.log('✅ LocationProvider: Location-based notification system initialized successfully');
-                } else {
-                    console.log('⚠️ LocationProvider: Failed to initialize location notifications');
-                }
-
-                console.log('✅ LocationProvider: Background location initialization, tracking, and notification setup complete');
+                console.log('🎯 LocationProvider: TrackingManager-only initialization complete');
 
             } catch (error) {
-                console.error('❌ LocationProvider: Error during background location initialization:', error);
-                // Continue silently, the location store will provide a default location
+                console.error('❌ LocationProvider: Critical error during initialization:', error);
             }
         };
 
-        // Start location initialization and tracking in background without blocking render
         initializeLocationAndTracking();
     }, [hasValidPersistedLocation, ensureValidLocation]);
 
-    // Always render children immediately to avoid blocking navigation
     return <>{children}</>;
 } 

@@ -7,10 +7,7 @@ import {
     startLocationTracking,
     stopLocationTracking,
 } from "./location.service";
-import {
-    requestNotificationPermissions,
-    sendTestNotification,
-} from "./notification.service";
+import { initializeNotifications } from "./notification.service";
 import { useLocationStore } from "@/stores/location/location.store";
 import { useAuthStore } from "@/stores/auth/auth.store";
 import {
@@ -19,6 +16,8 @@ import {
     trackSubscription,
     untrackSubscription,
 } from "./cleanup.service";
+
+import { getLocationConfig } from "@/config/location.config";
 
 // Singleton tracking manager
 class TrackingManager {
@@ -45,24 +44,27 @@ class TrackingManager {
      */
     public async initialize(): Promise<boolean> {
         if (this.isInitialized) {
-            console.log("Tracking manager already initialized");
             return true;
         }
 
         try {
-            console.log("Initializing tracking manager...");
-
-            // Note: Notifications are now initialized by ObstacleValidationWrapper
-            // to ensure proper setup with the modal system
+            console.log("🔄 TrackingManager: Starting initialization...");
 
             // Request location permissions
             const permissionGranted = await requestLocationPermissions();
             if (!permissionGranted) {
-                console.log("Location permissions denied");
-                return false;
+                console.warn(
+                    "⚠️ TrackingManager: Location permissions not granted",
+                );
+                // Still initialize the manager for future permission attempts
+                this.setupListeners();
+                this.isInitialized = true;
+                return false; // Return false to indicate permissions issue, but still initialized
             }
 
-            // Start listeners
+            console.log("✅ TrackingManager: Permissions granted");
+
+            // Start listeners for enhanced functionality
             this.setupListeners();
 
             // Check if location tracking is enabled in store
@@ -70,11 +72,34 @@ class TrackingManager {
                 useLocationStore.getState();
 
             // Clear processed markers to enable fresh notifications
-            clearExpiredProcessedMarkers();
+            try {
+                clearExpiredProcessedMarkers();
+            } catch (clearError) {
+                console.warn(
+                    "⚠️ TrackingManager: Error clearing expired markers:",
+                    clearError,
+                );
+            }
 
-            // Start location tracking if enabled - for all users including new users
+            // Start location tracking if enabled
             if (isTrackingEnabled) {
-                await this.startTracking();
+                console.log(
+                    "🚀 TrackingManager: Location tracking is enabled, starting...",
+                );
+                const trackingStarted = await this.startTracking();
+                if (!trackingStarted) {
+                    console.warn(
+                        "⚠️ TrackingManager: Failed to start tracking during initialization",
+                    );
+                } else {
+                    console.log(
+                        "✅ TrackingManager: Location tracking started successfully",
+                    );
+                }
+            } else {
+                console.log(
+                    "📍 TrackingManager: Location tracking is disabled in store",
+                );
             }
 
             // Register cleanup function
@@ -84,10 +109,14 @@ class TrackingManager {
             );
 
             this.isInitialized = true;
-            console.log("Tracking manager initialized successfully");
+            console.log(
+                "✅ TrackingManager: Initialization completed successfully",
+            );
             return true;
         } catch (error) {
-            console.error("Failed to initialize tracking manager:", error);
+            console.error("❌ TrackingManager: Initialization error:", error);
+            // Still mark as initialized to prevent repeated failures
+            this.isInitialized = true;
             return false;
         }
     }
@@ -113,11 +142,6 @@ class TrackingManager {
         this.authStateUnsubscribe = useAuthStore.subscribe(
             async (state) => {
                 const isAuthenticated = state.isAuthenticated;
-                console.log(
-                    `Auth state changed: ${
-                        isAuthenticated ? "Logged in" : "Logged out"
-                    }`,
-                );
 
                 if (isAuthenticated) {
                     // User has logged in, reset processed markers
@@ -148,20 +172,41 @@ class TrackingManager {
      */
     public async startTracking(): Promise<boolean> {
         try {
+            console.log("🔄 TrackingManager: Attempting to start tracking...");
+
+            // Check permissions first
+            const permissionGranted = await requestLocationPermissions();
+            if (!permissionGranted) {
+                console.warn(
+                    "⚠️ TrackingManager: Cannot start tracking - permissions not granted",
+                );
+                return false;
+            }
+
             const started = await startLocationTracking();
 
             if (started) {
                 const { setIsTrackingEnabled } = useLocationStore.getState();
                 setIsTrackingEnabled(true);
+                console.log(
+                    "✅ TrackingManager: Tracking started successfully",
+                );
 
                 if (this.isFirstTrackingSession) {
                     this.isFirstTrackingSession = false;
                 }
+            } else {
+                console.warn(
+                    "⚠️ TrackingManager: Failed to start location tracking",
+                );
             }
 
             return started;
         } catch (error) {
-            console.error("Error starting location tracking:", error);
+            console.error(
+                "❌ TrackingManager: Error starting tracking:",
+                error,
+            );
             return false;
         }
     }
@@ -174,120 +219,120 @@ class TrackingManager {
             const stopped = await stopLocationTracking();
 
             if (stopped) {
-                console.log("Location tracking stopped");
                 const { setIsTrackingEnabled } = useLocationStore.getState();
                 setIsTrackingEnabled(false);
             }
 
             return stopped;
         } catch (error) {
-            console.error("Error stopping location tracking:", error);
             return false;
         }
     }
 
     /**
-     * Set up app state change listener to handle background/foreground transitions
+     * Set up app state listener for background/foreground changes
      */
     private setupAppStateListener(): void {
+        // Remove any existing subscription
         if (this.appStateSubscription) {
-            return;
+            this.appStateSubscription.remove();
         }
 
+        // Subscribe to app state changes
         this.appStateSubscription = AppState.addEventListener(
             "change",
-            async (nextAppState) => {
+            (nextAppState: AppStateStatus) => {
+                const previousState = this.appState;
+                this.appState = nextAppState;
+
+                // Handle state transitions
                 if (
-                    this.appState === "active" &&
+                    previousState.match(/inactive|background/) &&
+                    nextAppState === "active"
+                ) {
+                    // App has come to the foreground
+                    this.handleAppForeground();
+                } else if (
+                    previousState === "active" &&
                     nextAppState.match(/inactive|background/)
                 ) {
-                    // App is going to background
-                    console.log("App is going to background");
-
-                    // Check if tracking is enabled
-                    const { isTrackingEnabled } = useLocationStore.getState();
-                    if (isTrackingEnabled) {
-                        // Make sure tracking continues in background
-                        this.ensureBackgroundTracking();
-                    }
-                } else if (
-                    nextAppState === "active" &&
-                    this.appState.match(/inactive|background/)
-                ) {
-                    // App is coming to foreground
-                    console.log("App is coming to foreground");
-
-                    // Check if tracking task is still running
-                    const { isTrackingEnabled } = useLocationStore.getState();
-                    if (isTrackingEnabled) {
-                        const isRunning = await Location
-                            .hasStartedLocationUpdatesAsync(
-                                LOCATION_TRACKING_TASK,
-                            )
-                            .catch(() => false);
-
-                        if (!isRunning) {
-                            // Restart tracking if it's not running
-                            console.log("Restarting location tracking...");
-                            await this.startTracking();
-                        }
-                    }
+                    // App has gone to the background
+                    this.handleAppBackground();
                 }
-
-                this.appState = nextAppState;
             },
         );
     }
 
     /**
-     * Ensure background tracking is properly configured
+     * Handle app coming to foreground
      */
-    private async ensureBackgroundTracking(): Promise<void> {
-        try {
-            // Check if the task is registered and running
-            const isTaskDefined = TaskManager.isTaskDefined(
-                LOCATION_TRACKING_TASK,
-            );
-            if (!isTaskDefined) {
-                console.warn("Location tracking task is not defined");
-                return;
-            }
+    private async handleAppForeground(): Promise<void> {
+        const { isTrackingEnabled } = useLocationStore.getState();
 
-            const isTracking = await Location.hasStartedLocationUpdatesAsync(
-                LOCATION_TRACKING_TASK,
-            )
-                .catch(() => false);
-
-            if (!isTracking) {
-                console.log("Background tracking not active, restarting...");
-                await this.startTracking();
-            }
-        } catch (error) {
-            console.error("Error ensuring background tracking:", error);
+        if (isTrackingEnabled) {
+            // Ensure background tracking is still active
+            await this.ensureBackgroundTracking();
         }
     }
 
     /**
-     * Clean up resources
+     * Handle app going to background
+     */
+    private async handleAppBackground(): Promise<void> {
+        const { isTrackingEnabled } = useLocationStore.getState();
+
+        if (isTrackingEnabled) {
+            // Ensure background tracking continues
+            await this.ensureBackgroundTracking();
+        }
+    }
+
+    /**
+     * Ensure background tracking is active when needed
+     */
+    private async ensureBackgroundTracking(): Promise<void> {
+        try {
+            // Check if the background task is defined
+            const isTaskDefined = await TaskManager.isTaskDefined(
+                LOCATION_TRACKING_TASK,
+            );
+
+            if (!isTaskDefined) {
+                // Task was lost, restart tracking
+                await this.startTracking();
+            }
+        } catch (error) {
+            // Silent error handling
+        }
+    }
+
+    /**
+     * Cleanup all resources
      */
     public cleanup(): void {
-        console.log("🧹 Cleaning up TrackingManager resources...");
-
+        // Remove app state listener
         if (this.appStateSubscription) {
             this.appStateSubscription.remove();
             this.appStateSubscription = null;
         }
 
+        // Remove auth state listener
         if (this.authStateUnsubscribe) {
             untrackSubscription(this.authStateUnsubscribe);
             this.authStateUnsubscribe();
             this.authStateUnsubscribe = null;
         }
 
+        // Reset state
         this.isInitialized = false;
-        console.log("✅ TrackingManager cleanup completed");
+        this.isFirstTrackingSession = true;
     }
 }
 
 // Export singleton instance
 export const trackingManager = TrackingManager.getInstance();
+
+// Convenience functions
+export const initializeTrackingManager = () => trackingManager.initialize();
+export const startTracking = () => trackingManager.startTracking();
+export const stopTracking = () => trackingManager.stopTracking();

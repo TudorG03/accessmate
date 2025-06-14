@@ -20,7 +20,7 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
 
     // Initialize preferences from user data
     const [activityTypes, setActivityTypes] = useState<PlaceType[]>([]);
-    const [transportMethod, setTransportMethod] = useState<TransportMethod>(TransportMethod.WALKING);
+    const [transportMethod, setTransportMethod] = useState<TransportMethod>(TransportMethod.WHEELCHAIR);
     const [budget, setBudget] = useState<Budget>(Budget.MEDIUM);
     const [location, setLocation] = useState({ latitude: 0, longitude: 0 });
     const [locationName, setLocationName] = useState<string>('');
@@ -91,7 +91,7 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
     useEffect(() => {
         if (user?.preferences) {
             setActivityTypes(user.preferences.activityTypes || []);
-            setTransportMethod(user.preferences.transportMethod || TransportMethod.WALKING);
+            setTransportMethod(user.preferences.transportMethod || TransportMethod.WHEELCHAIR);
             setBudget(user.preferences.budget || Budget.MEDIUM);
             setLocation(user.preferences.baseLocation || { latitude: 0, longitude: 0 });
             setLocationName(''); // Will be set when location is selected
@@ -332,9 +332,8 @@ const PreferencesModal: React.FC<PreferencesModalProps> = ({ visible, onClose, c
                                     onValueChange={setTransportMethod}
                                     style={{ color: colors.text }}
                                 >
-                                    <Picker.Item label="Walking" value={TransportMethod.WALKING} />
                                     <Picker.Item label="Wheelchair" value={TransportMethod.WHEELCHAIR} />
-                                    <Picker.Item label="Public Transport" value={TransportMethod.PUBLIC_TRANSPORT} />
+                                    <Picker.Item label="Walking" value={TransportMethod.WALKING} />
                                     <Picker.Item label="Car" value={TransportMethod.CAR} />
                                 </Picker>
                             </View>
